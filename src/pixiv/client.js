@@ -55,7 +55,10 @@ export class PixivClient {
           u.name.trim().toLowerCase() === lower ||
           u.account.trim().toLowerCase() === lower
         );
-        if (exact) return [exact, ...out.filter(u => u.id !== exact.id)];
+        if (exact) {
+          exact.exact = true;
+          return [exact, ...out.filter(u => u.id !== exact.id)];
+        }
         return out;
       }
     }

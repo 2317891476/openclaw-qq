@@ -91,6 +91,12 @@ export async function fetchByParsed(client, parsed) {
     return await resolve(client, selected, parsed.nsfw, headerBase, { targetCount, fallbackPool });
   }
 
+  if (parsed.type === 'authorPick') {
+    const uid = String(parsed.uid || '').trim();
+    if (!/^\d+$/.test(uid)) return { ok: false, message: '用法：/pixiv author pick <uid> [count]' };
+    return await fetchByParsed(client, { ...parsed, type: 'author', author: uid });
+  }
+
   if (parsed.type === 'author') {
     let uid = parsed.author;
     if (!uid) return { ok: false, message: 'author 参数不能为空' };
@@ -100,6 +106,21 @@ export async function fetchByParsed(client, parsed) {
         uid = AUTHOR_ID_MAP.get(key);
       } else {
         const users = await client.searchUsers(uid);
+        if (!users?.length) return { ok: false, message: `未找到画师: ${parsed.author}` };
+
+        // If not exact and multiple candidates, ask user to pick.
+        const isExact = !!users[0]?.exact;
+        if (!isExact && users.length > 1) {
+          const top = users.slice(0, 5).map(u => ({ id: u.id, name: u.name, account: u.account || '' }));
+          return {
+            ok: false,
+            message:
+              `找到多个画师候选，请选择：\n` +
+              top.map((u, i) => `${i + 1}. ${u.name}${u.account ? ` (@${u.account})` : ''} — ${u.id}`).join('\n') +
+              `\n\n用法：/pixiv author pick <uid> ${parsed.count || 5}`,
+          };
+        }
+
         uid = users?.[0]?.id || '';
       }
       if (!uid) return { ok: false, message: `未找到画师: ${parsed.author}` };

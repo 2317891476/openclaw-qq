@@ -38,8 +38,19 @@ export function parsePixivCommand(cmdText) {
   });
 
   // /pixiv author <uid|name> [count] [--years N|--years=N] [--alltime]
+  // /pixiv author pick <uid>
   // e.g. /pixiv author ASK 8 --years 3
   if ((cleaned[0] || '').toLowerCase() === 'author') {
+    // subcommand: pick
+    if ((cleaned[1] || '').toLowerCase() === 'pick') {
+      const uid = String(cleaned[2] || '').trim();
+      if (!/^\d+$/.test(uid)) {
+        return { type: 'authorPick', nsfw, noHq, uid: '', count: 0, years: null, alltime: false };
+      }
+      const yearsClamped = Number.isFinite(years) ? Math.max(1, Math.min(20, years)) : null;
+      return { type: 'authorPick', nsfw, noHq, uid, count: clamp(cleaned[3], 5, 1, 20), years: yearsClamped, alltime };
+    }
+
     const rawAuthorArgs = args.slice(1);
     const kept = [];
     let count = 5;
