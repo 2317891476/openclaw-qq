@@ -35,6 +35,37 @@ class PixivPlugin {
       return { ok: false, message: `last:\n- cmd: ${last.cmd}\n- got/target: ${last.got || 0}/${last.target || 0}\n- at: ${last.updatedAt || 'n/a'}` };
     }
 
+    if (parsed.type === 'export') {
+      const last = await this.lastState.get(contextKey);
+      if (!last?.pickedIds?.length) return { ok: false, message: '暂无可导出的结果。先执行一次 /pixiv。' };
+      const links = last.pickedIds.map(id => `https://www.pixiv.net/artworks/${id}`);
+      if (parsed.mode === 'json') {
+        const payload = {
+          cmd: last.cmd,
+          got: last.got || 0,
+          target: last.target || 0,
+          updatedAt: last.updatedAt || null,
+          pickedIds: last.pickedIds || [],
+          links,
+        };
+        const txt = JSON.stringify(payload, null, 2);
+        if (txt.length <= 3000) return { ok: false, message: txt };
+        // Split long JSON output into chunks
+        const chunks = [];
+        for (let i = 0; i < txt.length; i += 2800) chunks.push(txt.slice(i, i + 2800));
+        for (const c of chunks) {
+          await this.sendBundle({ isGroup, groupId, userId, contextKey, text: c, imagePaths: [] });
+        }
+        return { ok: false, message: `export json 已发送，共 ${chunks.length} 段。` };
+      }
+
+      const msg = [
+        'export links:',
+        ...links,
+      ].join('\n');
+      return { ok: false, message: msg };
+    }
+
     if (parsed.type === 'rerun') {
       const last = await this.lastState.get(contextKey);
       if (!last?.cmd) return { ok: false, message: '暂无可重跑请求。先执行一次 /pixiv ...' };

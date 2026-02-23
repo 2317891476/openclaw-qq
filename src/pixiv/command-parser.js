@@ -46,6 +46,12 @@ export function parsePixivCommand(cmdText) {
     return { type: 'favList' };
   }
 
+  // /pixiv export links|json
+  if ((args[0] || '').toLowerCase() === 'export') {
+    const mode = String(args[1] || 'links').toLowerCase();
+    return { type: 'export', mode: mode === 'json' ? 'json' : 'links' };
+  }
+
   // /pixiv verbose on|off
   if ((args[0] || '').toLowerCase() === 'verbose') {
     const mode = String(args[1] || '').toLowerCase();
