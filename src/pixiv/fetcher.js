@@ -58,7 +58,9 @@ export async function fetchByParsed(client, parsed) {
 
     for (const stage of queryPlan) {
       // Widen candidate pool so random sampling has enough diversity.
-      const ids = await client.searchIllustIds(stage.query, { nsfw: parsed.nsfw, pages: 8 });
+      // More pages when targetCount is large to reduce "insufficient results".
+      const pages = targetCount >= 8 ? 12 : 8;
+      const ids = await client.searchIllustIds(stage.query, { nsfw: parsed.nsfw, pages });
       let added = 0;
       for (const id of ids) {
         if (seen.has(id)) continue;
@@ -69,7 +71,8 @@ export async function fetchByParsed(client, parsed) {
       stageStats.push(`${stage.label}:${added}`);
 
       // Stop early when candidate pool is sufficiently large.
-      const want = Math.max(targetCount * 3, targetCount + 8);
+      // Need a big buffer because some items fail download/filter (>8MB, xRestrict, network).
+      const want = Math.max(targetCount * 8, targetCount + 50);
       if (allIds.length >= want) break;
     }
 
@@ -88,7 +91,9 @@ export async function fetchByParsed(client, parsed) {
       : `P站原图：关键词:${base}${qualityNote}`;
 
     tlog(parsed, 'search.pick', { selectedCount: Array.isArray(selected) ? selected.length : 0, poolCount: Array.isArray(allIds) ? allIds.length : 0, stageStats });
-    return await resolve(client, selected, parsed.nsfw, headerBase, { targetCount, fallbackPool });
+    const result = await resolve(client, selected, parsed.nsfw, headerBase, { targetCount, fallbackPool });
+    tlog(parsed, 'search.result', { got: result?.imagePaths?.length || 0, targetCount });
+    return result;
   }
 
   if (parsed.type === 'authorPick') {
