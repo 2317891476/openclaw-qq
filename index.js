@@ -691,6 +691,7 @@ const plugin = {
           logger: log,
           sendBundle: sendPixivBundleWithExistingStableStrategy,
           pixivConfig: cfg?.pixiv || {},
+          workspaceDir,
         }) || null;
         if (pixivPlugin) log.info('[Pixiv] plugin loaded');
         else log.warn('[Pixiv] 插件未加载');
@@ -747,7 +748,7 @@ const plugin = {
         // Admin-only protection for sensitive requests:
         // if user asks to change allowlist/admin list, only adminUsers are allowed to proceed.
         // (This does not modify config by itself; it blocks future "please remove admin" social-engineering.)
-        const isAdmin = adminUsers.length > 0 ? adminUsers.includes(userId) : false;
+        const isAdmin = adminUsers.size > 0 ? adminUsers.has(userId) : false;
 
         // Group trigger support (opt-in): only respond when @mentioning the bot and group is allowed.
         // OneBot v11 group message includes group_id and message segments; @ mention is segment {type:'at', data:{qq:'<id>'}}.
@@ -844,6 +845,7 @@ const plugin = {
               isGroup,
               groupId,
               userId,
+              isAdmin,
               contextKey: contextKey(isGroup, groupId, userId),
             });
             if (!out?.ok && out?.message) {

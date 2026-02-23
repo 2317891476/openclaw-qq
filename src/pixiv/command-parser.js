@@ -9,6 +9,29 @@ export function parsePixivCommand(cmdText) {
   // parts[0] is /pixiv
   const args = parts.slice(1);
 
+  // /pixiv preset save <name> <template...>
+  // /pixiv preset run <name> [count]
+  // /pixiv preset list
+  // /pixiv preset delete <name>
+  if ((args[0] || '').toLowerCase() === 'preset') {
+    const sub = (args[1] || 'list').toLowerCase();
+    if (sub === 'save') {
+      const name = String(args[2] || '').trim();
+      const template = args.slice(3).join(' ').trim();
+      return { type: 'presetSave', name, template };
+    }
+    if (sub === 'run') {
+      const name = String(args[2] || '').trim();
+      const count = /^\d+$/.test(args[3] || '') ? Number(args[3]) : null;
+      return { type: 'presetRun', name, count };
+    }
+    if (sub === 'delete' || sub === 'del' || sub === 'rm') {
+      const name = String(args[2] || '').trim();
+      return { type: 'presetDelete', name };
+    }
+    return { type: 'presetList' };
+  }
+
   const nsfw = args.includes('--nsfw');
   const noHq = args.includes('--nohq') || args.includes('--no-hq');
 
