@@ -114,7 +114,14 @@ export async function fetchByParsed(client, parsed) {
       : `P站原图：关键词:${base}${qualityNote}${filterNote}`;
 
     tlog(parsed, 'search.pick', { selectedCount: Array.isArray(selected) ? selected.length : 0, poolCount: Array.isArray(rankedIds) ? rankedIds.length : 0, stageStats, mode });
-    const result = await resolve(client, selected, parsed.nsfw, headerBase, { targetCount, fallbackPool, minBookmark: parsed.minBookmark, ratio: parsed.ratio });
+    const result = await resolve(client, selected, parsed.nsfw, headerBase, {
+      targetCount,
+      fallbackPool,
+      minBookmark: parsed.minBookmark,
+      ratio: parsed.ratio,
+      countFirst: !!parsed.countFirst,
+      qualityFirst: !!parsed.qualityFirst,
+    });
     tlog(parsed, 'search.result', { got: result?.imagePaths?.length || 0, targetCount });
     return result;
   }
@@ -224,14 +231,16 @@ export async function fetchByParsed(client, parsed) {
 async function resolve(client, ids, nsfw, headerBase, opts = {}) {
   const targetCount = Number(opts.targetCount || ids.length || 0);
   const fallbackPool = Array.isArray(opts.fallbackPool) ? opts.fallbackPool : [];
-  const minBookmark = Number(opts.minBookmark || 0);
-  const ratio = String(opts.ratio || '').trim();
+  const minBookmarkRaw = Number(opts.minBookmark || 0);
+  const ratioRaw = String(opts.ratio || '').trim();
+  const countFirst = !!opts.countFirst && !opts.qualityFirst;
 
   const pickedIds = [];
   const imagePaths = [];
   const tried = new Set();
+  const stageHits = [];
 
-  function ratioMatch(w, h, ratioExpr) {
+  function ratioMatch(w, h, ratioExpr, tol = 0.08) {
     if (!ratioExpr) return true;
     const m = String(ratioExpr).match(/^(\d+):(\d+)$/);
     if (!m) return true;
@@ -240,40 +249,52 @@ async function resolve(client, ids, nsfw, headerBase, opts = {}) {
     if (!rw || !rh || !w || !h) return true;
     const target = rw / rh;
     const actual = Number(w) / Number(h);
-    // tolerance ~8%
-    return Math.abs(actual - target) <= target * 0.08;
+    return Math.abs(actual - target) <= target * tol;
   }
 
-  async function tryAdd(id) {
-    if (!id || tried.has(id)) return;
+  async function tryAdd(id, stage) {
+    if (!id || tried.has(id)) return false;
     tried.add(id);
     const meta = await client.illustMeta(id);
-    if (!meta?.original) return;
-    if (!nsfw && Number(meta.xRestrict || 0) > 0) return;
-    if (minBookmark > 0 && Number(meta.bookmarkCount || 0) < minBookmark) return;
-    if (!ratioMatch(meta.width, meta.height, ratio)) return;
+    if (!meta?.original) return false;
+    if (!nsfw && Number(meta.xRestrict || 0) > 0) return false;
+    if (stage.minBookmark > 0 && Number(meta.bookmarkCount || 0) < stage.minBookmark) return false;
+    if (!ratioMatch(meta.width, meta.height, stage.ratio, stage.ratioTol)) return false;
     const p = await client.downloadOriginal(meta);
-    if (!p) return;
+    if (!p) return false;
     pickedIds.push(String(id));
     imagePaths.push(p);
+    return true;
   }
 
-  for (const id of ids) {
-    await tryAdd(id);
+  const stages = [
+    { name: 'strict', minBookmark: minBookmarkRaw, ratio: ratioRaw, ratioTol: 0.08 },
+    ...(countFirst ? [
+      { name: 'relax_ratio', minBookmark: minBookmarkRaw, ratio: ratioRaw, ratioTol: 0.16 },
+      { name: 'relax_bookmark', minBookmark: minBookmarkRaw > 0 ? Math.max(1000, Math.floor(minBookmarkRaw * 0.6)) : 0, ratio: ratioRaw, ratioTol: 0.16 },
+      { name: 'relax_more', minBookmark: minBookmarkRaw > 0 ? Math.max(300, Math.floor(minBookmarkRaw * 0.3)) : 0, ratio: '', ratioTol: 0.2 },
+    ] : []),
+  ];
+
+  const fullPool = [...ids, ...fallbackPool];
+
+  for (const stage of stages) {
+    let added = 0;
+    for (const id of fullPool) {
+      const ok = await tryAdd(id, stage);
+      if (ok) added += 1;
+      if (targetCount > 0 && imagePaths.length >= targetCount) break;
+    }
+    stageHits.push(`${stage.name}:${added}`);
     if (targetCount > 0 && imagePaths.length >= targetCount) break;
   }
 
-  if (targetCount > 0 && imagePaths.length < targetCount) {
-    for (const id of fallbackPool) {
-      await tryAdd(id);
-      if (imagePaths.length >= targetCount) break;
-    }
-  }
+  const stageNote = countFirst ? `（fill:${stageHits.join(' > ')}）` : '';
 
   return {
     ok: true,
     pickedIds,
     imagePaths,
-    header: `${headerBase} ×${imagePaths.length}${targetCount ? `/${targetCount}` : ''}${nsfw ? '（NSFW）' : '（全年龄）'}`,
+    header: `${headerBase}${stageNote} ×${imagePaths.length}${targetCount ? `/${targetCount}` : ''}${nsfw ? '（NSFW）' : '（全年龄）'}`,
   };
 }

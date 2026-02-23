@@ -34,6 +34,8 @@ export function parsePixivCommand(cmdText) {
 
   const nsfw = args.includes('--nsfw');
   const noHq = args.includes('--nohq') || args.includes('--no-hq');
+  const countFirst = args.includes('--count_first') || args.includes('--count-first');
+  const qualityFirst = args.includes('--quality_first') || args.includes('--quality-first');
 
   // Search filters:
   // --min_bookmark=1000 / --min_bookmark 1000
@@ -88,7 +90,7 @@ export function parsePixivCommand(cmdText) {
   const alltime = args.includes('--alltime');
 
   const cleaned = args.filter((x, i) => {
-    if (['--nsfw', '--nohq', '--no-hq', '--alltime'].includes(x)) return false;
+    if (['--nsfw', '--nohq', '--no-hq', '--alltime', '--count_first', '--count-first', '--quality_first', '--quality-first'].includes(x)) return false;
     if (/^--years=\d+$/i.test(x)) return false;
     if (/^--years$/i.test(x) && /^\d+$/.test(args[i + 1] || '')) return false;
     if (i > 0 && /^\d+$/.test(x) && /^--years$/i.test(args[i - 1] || '')) return false;
@@ -187,6 +189,8 @@ export function parsePixivCommand(cmdText) {
     minBookmark: Number.isFinite(minBookmark) ? Math.max(0, minBookmark) : null,
     ratio: ratio || null,
     qualityMode: qualityMode || null,
+    countFirst,
+    qualityFirst,
   };
 }
 
