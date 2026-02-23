@@ -15,7 +15,7 @@ OpenClaw QQ plugin (NapCat / OneBot v11) with built-in Pixiv module.
 ## 1) 安装
 
 ```bash
-openclaw plugins install @2317891476/openclaw-qq
+openclaw plugins install @cs2317/openclaw-qq
 ```
 
 本地开发安装（可选）：
