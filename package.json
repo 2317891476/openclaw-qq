@@ -1,6 +1,6 @@
 {
-  "name": "@creatoraris/openclaw-qq",
-  "version": "0.2.0",
+  "name": "@2317891476/openclaw-qq",
+  "version": "0.2.1",
   "description": "QQ channel plugin for OpenClaw via NapCat (OneBot v11)",
   "main": "index.js",
   "type": "module",
@@ -13,16 +13,16 @@
     "plugin",
     "ai"
   ],
-  "author": "CreatorAris <arisyingying13@gmail.com>",
+  "author": "2317891476",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CreatorAris/openclaw-qq-plugin.git"
+    "url": "git+https://github.com/2317891476/openclaw-qq.git"
   },
   "bugs": {
-    "url": "https://github.com/CreatorAris/openclaw-qq-plugin/issues"
+    "url": "https://github.com/2317891476/openclaw-qq/issues"
   },
-  "homepage": "https://github.com/CreatorAris/openclaw-qq-plugin#readme",
+  "homepage": "https://github.com/2317891476/openclaw-qq#readme",
   "scripts": {
     "start": "node index.js"
   },
@@ -39,6 +39,7 @@
   },
   "files": [
     "index.js",
+    "src/**",
     "openclaw.plugin.json",
     "README.md",
     "LICENSE"
