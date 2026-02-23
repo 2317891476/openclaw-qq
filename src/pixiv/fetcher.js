@@ -13,6 +13,14 @@ const AUTHOR_ID_MAP = new Map([
   ['ask', '1980643'],
 ]);
 
+
+function tlog(parsed, stage, extra = {}) {
+  const traceId = parsed?.traceId;
+  if (!traceId) return;
+  try {
+    console.log(JSON.stringify({ ts: new Date().toISOString(), subsystem: 'pixiv', traceId, stage, ...extra }));
+  } catch {}
+}
 function shuffle(a) {
   const arr = [...a];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -46,6 +54,8 @@ export async function fetchByParsed(client, parsed) {
     const seen = new Set();
     const stageStats = [];
 
+    tlog(parsed, 'search.start', { keyword: base, targetCount, nsfw: parsed.nsfw, noHq: parsed.noHq });
+
     for (const stage of queryPlan) {
       // Widen candidate pool so random sampling has enough diversity.
       const ids = await client.searchIllustIds(stage.query, { nsfw: parsed.nsfw, pages: 8 });
@@ -77,6 +87,7 @@ export async function fetchByParsed(client, parsed) {
       ? `P站原图：关键词:${base} 区间:${parsed.range.start}-${parsed.range.end}${qualityNote}`
       : `P站原图：关键词:${base}${qualityNote}`;
 
+    tlog(parsed, 'search.pick', { selectedCount: Array.isArray(selected) ? selected.length : 0, poolCount: Array.isArray(allIds) ? allIds.length : 0, stageStats });
     return await resolve(client, selected, parsed.nsfw, headerBase, { targetCount, fallbackPool });
   }
 

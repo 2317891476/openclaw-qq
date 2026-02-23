@@ -14,7 +14,7 @@ class PixivPlugin {
     this.rate = new Map();
   }
 
-  async handleCommand({ cmd, isGroup, groupId, userId, contextKey }) {
+  async handleCommand({ cmd, traceId = null, isGroup, groupId, userId, contextKey }) {
     const parsed = parsePixivCommand(cmd);
     const now = Date.now();
     const last = this.rate.get(contextKey) || 0;
@@ -23,7 +23,7 @@ class PixivPlugin {
     }
     this.rate.set(contextKey, now);
 
-    const out = await fetchByParsed(this.client, parsed);
+    const out = await fetchByParsed(this.client, { ...parsed, traceId });
     if (!out.ok) return out;
 
     await this.sendBundle({
@@ -47,6 +47,7 @@ class PixivPlugin {
       range: payload.range || null,
       author: payload.author || '',
       mode: payload.mode || 'daily',
+      traceId: payload.traceId || null,
     };
     return await fetchByParsed(this.client, parsed);
   }

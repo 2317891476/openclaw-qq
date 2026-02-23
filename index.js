@@ -434,6 +434,32 @@ const plugin = {
       return isGroup ? `group:${String(groupId)}` : `user:${String(userId)}`;
     }
 
+    function makeTraceId(prefix = 't') {
+      return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`;
+    }
+
+    function logJson(level, obj) {
+      try {
+        const line = JSON.stringify(obj);
+        if (level === 'error') log.error(line);
+        else if (level === 'warn') log.warn(line);
+        else log.info(line);
+      } catch (e) {
+        log.warn('[trace] failed to stringify log object');
+      }
+    }
+
+    function trace(stage, base, extra = {}, level = 'info') {
+      const payload = {
+        ts: new Date().toISOString(),
+        subsystem: 'openclaw-qq',
+        stage,
+        ...base,
+        ...extra,
+      };
+      logJson(level, payload);
+    }
+
     // ── Send queue (per context) + global concurrency + adaptive delay ──
     const sendTailByContext = new Map(); // contextKey -> Promise
     const sendStatsByContext = new Map(); // contextKey -> {delayMs, ok, timeout, err}
@@ -507,7 +533,7 @@ const plugin = {
             const msg = String(e?.message || e);
             if (/timeout/i.test(msg)) adaptDelay(key, 'timeout');
             else adaptDelay(key, 'err');
-            log.error(`[SendQueue] failed ctx=${key} meta=${JSON.stringify(meta)} err=${msg}`);
+            log.error(`[SendQueue] failed ctx=${key} trace=${meta.traceId||''} meta=${JSON.stringify(meta)} err=${msg}`);
             throw e;
           } finally {
             const dt = Date.now() - t0;
@@ -516,7 +542,7 @@ const plugin = {
             const st = getSendStats(key);
             await sleep(Math.min(500, Math.max(0, Math.round(st.delayMs * 0.15))));
             if (dt > 0 && meta?.label) {
-              log.info(`[SendQueue] done ctx=${key} label=${meta.label} dt=${dt}ms delay=${getSendStats(key).delayMs}ms`);
+              log.info(`[SendQueue] done ctx=${key} label=${meta.label} dt=${dt}ms delay=${getSendStats(key).delayMs}ms trace=${meta.traceId||''}`);
             }
           }
         });
@@ -774,6 +800,9 @@ const plugin = {
         // Built-in command: /help or hyw (send QQ_BOT_HELP.md)
         const cmd = text.trim();
         if (/^\/help$/i.test(cmd) || /^hyw$/i.test(cmd)) {
+          const traceId = makeTraceId('help');
+          trace('help', { traceId, contextKey: contextKey(isGroup, groupId, userId), isGroup, groupId, userId }, { cmd: cmd });
+
           const help = await loadHelpText();
           const ctx = contextKey(isGroup, groupId, userId);
           if (isGroup) await sendToQQTracked(groupId, help, true, { contextKey: ctx }).catch(() => sendToQQ(groupId, help, true));
@@ -790,6 +819,7 @@ const plugin = {
         const pixivDirect = /^\/(?:pixiv|p)(?:\s+|$)/i.test(cmdNorm) || /^p(?:\s+|$)/i.test(cmdNorm);
         const pixivMatch = cmdNorm.match(/(?:^|\s)(\/pixiv|\/p|p)\s*(.*)$/i);
         if (pixivDirect && pixivMatch) {
+          const traceId = makeTraceId('pixiv');
           if (!pixivPlugin) {
             const msg = 'Pixiv 插件未加载';
             if (isGroup) sendToQQ(groupId, msg, true);
@@ -800,9 +830,11 @@ const plugin = {
           const rest = (pixivMatch[2] || '').trim();
           const normalizedCmd = rest ? `/pixiv ${rest}` : '/pixiv 5 オリジナル';
           log.info(`[PixivCmd] matched alias=${alias} normalized=${normalizedCmd}`);
+          trace('pixiv.cmd', { traceId, contextKey: contextKey(isGroup, groupId, userId), isGroup, groupId, userId }, { normalizedCmd });
           try {
             const out = await pixivPlugin.handleCommand({
               cmd: normalizedCmd,
+              traceId,
               isGroup,
               groupId,
               userId,
@@ -907,7 +939,9 @@ const plugin = {
                 const isGroup = !!groupId;
                 const ctxKey = contextKey(isGroup, String(groupId || ''), String(userId || ''));
 
-                const out = await pixivPlugin.handleHttpSearch(parsed);
+                const traceId = makeTraceId('pixiv_http');
+                trace('pixiv.http', { traceId, contextKey: ctxKey, isGroup, groupId, userId }, { route: '/pixiv_search' });
+                const out = await pixivPlugin.handleHttpSearch({ ...parsed, traceId });
                 if (!out?.ok) {
                   res.writeHead(400, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify({ ok: false, error: out?.message || 'pixiv search failed' }));
@@ -950,7 +984,9 @@ const plugin = {
                 const isGroup = !!groupId;
                 const ctxKey = contextKey(isGroup, String(groupId || ''), String(userId || ''));
 
-                const out = await pixivPlugin.handleHttpSearch(parsed);
+                const traceId = makeTraceId('pixiv_http');
+                trace('pixiv.http', { traceId, contextKey: ctxKey, isGroup, groupId, userId }, { route: '/pixiv_search' });
+                const out = await pixivPlugin.handleHttpSearch({ ...parsed, traceId });
                 if (!out?.ok) {
                   res.writeHead(400, { 'Content-Type': 'application/json' });
                   res.end(JSON.stringify({ ok: false, error: out?.message || 'pixiv rank failed' }));
