@@ -9,6 +9,15 @@ export function parsePixivCommand(cmdText) {
   // parts[0] is /pixiv
   const args = parts.slice(1);
 
+  // /pixiv last | /pixiv rerun [count]
+  if ((args[0] || '').toLowerCase() === 'last') {
+    return { type: 'last' };
+  }
+  if ((args[0] || '').toLowerCase() === 'rerun') {
+    const count = /^\d+$/.test(args[1] || '') ? Number(args[1]) : null;
+    return { type: 'rerun', count };
+  }
+
   // /pixiv verbose on|off
   if ((args[0] || '').toLowerCase() === 'verbose') {
     const mode = String(args[1] || '').toLowerCase();

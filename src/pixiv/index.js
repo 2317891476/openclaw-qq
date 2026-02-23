@@ -3,6 +3,7 @@ import { PixivClient } from './client.js';
 import { fetchByParsed } from './fetcher.js';
 import { PresetStore } from './presets.js';
 import { PixivSettingsStore } from './settings.js';
+import { LastStateStore } from './last-state.js';
 
 export function createPixivPlugin(deps) {
   return new PixivPlugin(deps);
@@ -17,10 +18,30 @@ class PixivPlugin {
     this.rate = new Map();
     this.presets = new PresetStore(workspaceDir);
     this.settings = new PixivSettingsStore(workspaceDir);
+    this.lastState = new LastStateStore(workspaceDir);
   }
 
   async handleCommand({ cmd, traceId = null, isGroup, groupId, userId, contextKey, isAdmin = false }) {
     let parsed = parsePixivCommand(cmd);
+
+    // Last/rerun
+    if (parsed.type === 'last') {
+      const last = await this.lastState.get(contextKey);
+      if (!last) return { ok: false, message: '暂无最近一次 Pixiv 请求。' };
+      return { ok: false, message: `last:\n- cmd: ${last.cmd}\n- got/target: ${last.got || 0}/${last.target || 0}\n- at: ${last.updatedAt || 'n/a'}` };
+    }
+
+    if (parsed.type === 'rerun') {
+      const last = await this.lastState.get(contextKey);
+      if (!last?.cmd) return { ok: false, message: '暂无可重跑请求。先执行一次 /pixiv ...' };
+      let rerunCmd = String(last.cmd);
+      if (Number.isFinite(parsed.count) && parsed.count > 0) {
+        const body = rerunCmd.replace(/^\/pixiv\s+/i, '');
+        if (/^\d+(?:-\d+)?\b/.test(body)) rerunCmd = `/pixiv ${body.replace(/^\d+(?:-\d+)?\b/, String(parsed.count))}`;
+        else rerunCmd = `/pixiv ${parsed.count} ${body}`;
+      }
+      parsed = parsePixivCommand(rerunCmd);
+    }
 
     // Verbose toggle (per context)
     if (parsed.type === 'verbose') {
@@ -99,6 +120,16 @@ class PixivPlugin {
       text,
       imagePaths: out.imagePaths,
     });
+
+    // Persist last successful pixiv command for rerun/last
+    try {
+      await this.lastState.set(contextKey, {
+        cmd,
+        got: out.imagePaths?.length || 0,
+        target: out.debug?.target || out.imagePaths?.length || 0,
+      });
+    } catch {}
+
     return { ok: true, pickedIds: out.pickedIds, imageCount: out.imagePaths.length };
   }
 
