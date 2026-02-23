@@ -177,8 +177,15 @@ export function parsePixivCommand(cmdText) {
 
   // /pixiv author <uid|name> [count] [--years N|--years=N] [--alltime]
   // /pixiv author pick <uid>
+  // /pixiv author profile <uid|name>
   // e.g. /pixiv author ASK 8 --years 3
   if ((cleaned[0] || '').toLowerCase() === 'author') {
+    // subcommand: profile
+    if ((cleaned[1] || '').toLowerCase() === 'profile') {
+      const author = String(cleaned.slice(2).join(' ') || '').trim();
+      return { type: 'authorProfile', author };
+    }
+
     // subcommand: pick
     if ((cleaned[1] || '').toLowerCase() === 'pick') {
       const uid = String(cleaned[2] || '').trim();

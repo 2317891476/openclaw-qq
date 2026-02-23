@@ -133,6 +133,58 @@ export async function fetchByParsed(client, parsed) {
     return result;
   }
 
+  if (parsed.type === 'authorProfile') {
+    let uid = String(parsed.author || '').trim();
+    if (!uid) return { ok: false, message: '用法：/pixiv author profile <uid|name>' };
+    if (!/^\d+$/.test(uid)) {
+      const key = uid.toLowerCase();
+      if (AUTHOR_ID_MAP.has(key)) uid = AUTHOR_ID_MAP.get(key);
+      else {
+        const users = await client.searchUsers(uid);
+        if (!users?.length) return { ok: false, message: `未找到画师: ${parsed.author}` };
+        uid = users[0].id;
+      }
+    }
+
+    const ids = await client.userIllustIds(uid);
+    if (!ids.length) return { ok: false, message: `画师无作品: ${parsed.author || uid}` };
+
+    const sampleIds = ids.slice(0, 120);
+    const rows = [];
+    for (const id of sampleIds) {
+      const meta = await client.illustMeta(id).catch(() => null);
+      if (!meta) continue;
+      rows.push({
+        ts: meta.createDate ? Date.parse(meta.createDate) : 0,
+        bk: Number(meta.bookmarkCount || 0),
+      });
+    }
+    if (!rows.length) return { ok: false, message: `画师画像失败: ${parsed.author || uid}` };
+
+    rows.sort((a, b) => a.bk - b.bk);
+    const p50 = rows[Math.floor(rows.length * 0.5)]?.bk || 0;
+    const p90 = rows[Math.floor(rows.length * 0.9)]?.bk || 0;
+    const now = Date.now();
+    const y1 = now - 365 * 24 * 60 * 60 * 1000;
+    const y3 = now - 3 * 365 * 24 * 60 * 60 * 1000;
+    const cnt1y = rows.filter(x => (x.ts || 0) >= y1).length;
+    const cnt3y = rows.filter(x => (x.ts || 0) >= y3).length;
+    const latestTs = Math.max(...rows.map(x => x.ts || 0));
+    const latest = latestTs ? new Date(latestTs).toISOString().slice(0, 10) : 'n/a';
+
+    const msg = [
+      `画师画像: ${parsed.author || uid} (${uid})`,
+      `- 样本数: ${rows.length} (最近作品池)` ,
+      `- 近1年作品: ${cnt1y}`,
+      `- 近3年作品: ${cnt3y}`,
+      `- 收藏中位数(p50): ${p50}`,
+      `- 收藏高位(p90): ${p90}`,
+      `- 最近活跃: ${latest}`,
+    ].join('\n');
+
+    return { ok: false, message: msg };
+  }
+
   if (parsed.type === 'authorPick') {
     const uid = String(parsed.uid || '').trim();
     if (!/^\d+$/.test(uid)) return { ok: false, message: '用法：/pixiv author pick <uid> [count]' };
