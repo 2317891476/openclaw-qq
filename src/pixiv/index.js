@@ -4,6 +4,7 @@ import { fetchByParsed } from './fetcher.js';
 import { PresetStore } from './presets.js';
 import { PixivSettingsStore } from './settings.js';
 import { LastStateStore } from './last-state.js';
+import { FavStore } from './favs.js';
 
 export function createPixivPlugin(deps) {
   return new PixivPlugin(deps);
@@ -19,6 +20,7 @@ class PixivPlugin {
     this.presets = new PresetStore(workspaceDir);
     this.settings = new PixivSettingsStore(workspaceDir);
     this.lastState = new LastStateStore(workspaceDir);
+    this.favs = new FavStore(workspaceDir);
   }
 
   async handleCommand({ cmd, traceId = null, isGroup, groupId, userId, contextKey, isAdmin = false }) {
@@ -86,6 +88,49 @@ class PixivPlugin {
       parsed = parsePixivCommand(normalized);
     }
 
+    // Fav commands
+    if (parsed.type === 'favList') {
+      const list = await this.favs.list(contextKey);
+      if (!list.length) return { ok: false, message: '收藏夹为空。' };
+      return { ok: false, message: 'fav 列表：\n' + list.slice(0, 30).map((x, i) => `${i + 1}. ${x.id} (${x.addedAt || 'n/a'})`).join('\n') };
+    }
+
+    if (parsed.type === 'favAdd') {
+      const last = await this.lastState.get(contextKey);
+      const ids = Array.isArray(last?.pickedIds) ? last.pickedIds : [];
+      const paths = Array.isArray(last?.imagePaths) ? last.imagePaths : [];
+      if (!ids.length || !paths.length) return { ok: false, message: '没有可收藏的最近结果。先执行一次 /pixiv。' };
+      const items = [];
+      const n = Math.min(ids.length, paths.length);
+      for (let i = 0; i < n; i++) items.push({ id: String(ids[i]), imagePath: String(paths[i]) });
+      const total = await this.favs.addMany(contextKey, items);
+      return { ok: false, message: `已收藏 ${items.length} 张（收藏总数: ${total}）` };
+    }
+
+    if (parsed.type === 'favRemove') {
+      if (!isAdmin) return { ok: false, message: '仅管理员可删除收藏。' };
+      if (!parsed.id) return { ok: false, message: '用法：/pixiv fav remove <id>' };
+      const total = await this.favs.remove(contextKey, parsed.id);
+      return { ok: false, message: `已删除 ${parsed.id}（剩余: ${total}）` };
+    }
+
+    if (parsed.type === 'favSend') {
+      const list = await this.favs.list(contextKey);
+      if (!list.length) return { ok: false, message: '收藏夹为空。' };
+      const count = Math.max(1, Math.min(20, Number(parsed.count || 5)));
+      const shuffled = [...list].sort(() => Math.random() - 0.5).slice(0, count);
+      const imagePaths = shuffled.map(x => x.imagePath).filter(Boolean);
+      await this.sendBundle({
+        isGroup,
+        groupId,
+        userId,
+        contextKey,
+        text: `Fav 随机发送 ×${imagePaths.length}/${count}`,
+        imagePaths,
+      });
+      return { ok: true, imageCount: imagePaths.length };
+    }
+
     const now = Date.now();
     const last = this.rate.get(contextKey) || 0;
     if (now - last < 10_000) {
@@ -127,6 +172,8 @@ class PixivPlugin {
         cmd,
         got: out.imagePaths?.length || 0,
         target: out.debug?.target || out.imagePaths?.length || 0,
+        pickedIds: out.pickedIds || [],
+        imagePaths: out.imagePaths || [],
       });
     } catch {}
 

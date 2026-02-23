@@ -18,6 +18,21 @@ export function parsePixivCommand(cmdText) {
     return { type: 'rerun', count };
   }
 
+  // /pixiv fav add|list|send [count]|remove <id>
+  if ((args[0] || '').toLowerCase() === 'fav') {
+    const sub = String(args[1] || 'list').toLowerCase();
+    if (sub === 'add') return { type: 'favAdd' };
+    if (sub === 'list') return { type: 'favList' };
+    if (sub === 'send') {
+      const count = /^\d+$/.test(args[2] || '') ? Number(args[2]) : 5;
+      return { type: 'favSend', count: Math.max(1, Math.min(20, count)) };
+    }
+    if (sub === 'remove' || sub === 'rm' || sub === 'del') {
+      return { type: 'favRemove', id: String(args[2] || '').trim() };
+    }
+    return { type: 'favList' };
+  }
+
   // /pixiv verbose on|off
   if ((args[0] || '').toLowerCase() === 'verbose') {
     const mode = String(args[1] || '').toLowerCase();
