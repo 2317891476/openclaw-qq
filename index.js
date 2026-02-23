@@ -333,6 +333,8 @@ const plugin = {
     let napcat = null;
     let reconnectTimer = null;
     let stopped = false;
+    let reconnectCount = 0;
+    let lastDisconnectCode = null;
 
     // ── NapCat heartbeat / auto-reconnect ──
     // Problem: NapCat/adapter can get into a "half-open" state (TCP looks alive,
@@ -852,6 +854,26 @@ const plugin = {
           return;
         }
 
+
+        // Built-in command: /diag (runtime diagnostics)
+        if (/^\/diag$/i.test(cmd)) {
+          const ctx = contextKey(isGroup, groupId, userId);
+          const st = getSendStats(ctx);
+          const qDepth = sendTailByContext.has(ctx) ? 1 : 0;
+          const info = [
+            `diag:`,
+            `- napcat: ${napcat && napcat.readyState === WebSocket.OPEN ? 'OPEN' : (napcat ? 'NOT_OPEN' : 'NONE')}`,
+            `- lastPongAgoMs: ${lastPongAtMs ? (Date.now() - lastPongAtMs) : 'n/a'}`,
+            `- lastInboundAgoMs: ${lastInboundAtMs ? (Date.now() - lastInboundAtMs) : 'n/a'}`,
+            `- reconnectCount: ${reconnectCount}`,
+            `- lastDisconnectCode: ${lastDisconnectCode ?? 'n/a'}`,
+            `- sendDelayMs: ${st.delayMs}`,
+            `- sendStats(ok/timeout/err): ${st.ok}/${st.timeout}/${st.err}`,
+          ].join('\n');
+          if (isGroup) await sendToQQTracked(groupId, info, true, { contextKey: ctx }).catch(() => sendToQQ(groupId, info, true));
+          else await sendToQQTracked(userId, info, false, { contextKey: ctx }).catch(() => sendToQQ(userId, info));
+          return;
+        }
         // Guardrail: admin-only allowlist/admin changes
         // If a non-admin tries to request allowlist/admin modifications, deny early.
         const lower = text.toLowerCase();
@@ -884,6 +906,8 @@ const plugin = {
 
       napcat.on('close', (code) => {
         stopHeartbeat();
+        reconnectCount += 1;
+        lastDisconnectCode = code;
         log.info(`[NapCat] disconnected (${code})`);
         if (!stopped) {
           reconnectTimer = setTimeout(connectNapCat, 5000);
