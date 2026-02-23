@@ -12,7 +12,7 @@ const plugin = {
     const napcatToken = cfg.napcatToken || process.env.NAPCAT_TOKEN || '';
     const botQQ = String(cfg.botQQ || process.env.BOT_QQ || '');
     const allowedUsers = cfg.allowedUsers || [];
-    const adminUsers = (cfg.adminUsers || []).map(String);
+    const adminUsers = new Set((cfg.adminUsers || []).map(String));
     const httpPort = Number(cfg.port || 0);
 
     if (!napcatWs) {
