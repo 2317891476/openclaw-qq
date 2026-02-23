@@ -122,6 +122,13 @@ export async function fetchByParsed(client, parsed) {
       countFirst: !!parsed.countFirst,
       qualityFirst: !!parsed.qualityFirst,
     });
+    result.debug = {
+      poolCount: Array.isArray(rankedIds) ? rankedIds.length : 0,
+      stageStats,
+      mode,
+      got: result?.imagePaths?.length || 0,
+      target: targetCount,
+    };
     tlog(parsed, 'search.result', { got: result?.imagePaths?.length || 0, targetCount });
     return result;
   }

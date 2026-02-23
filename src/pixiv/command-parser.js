@@ -9,6 +9,12 @@ export function parsePixivCommand(cmdText) {
   // parts[0] is /pixiv
   const args = parts.slice(1);
 
+  // /pixiv verbose on|off
+  if ((args[0] || '').toLowerCase() === 'verbose') {
+    const mode = String(args[1] || '').toLowerCase();
+    return { type: 'verbose', enabled: mode === 'on' ? true : mode === 'off' ? false : null };
+  }
+
   // /pixiv preset save <name> <template...>
   // /pixiv preset run <name> [count]
   // /pixiv preset list
