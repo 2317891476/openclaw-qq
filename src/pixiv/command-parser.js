@@ -52,6 +52,28 @@ export function parsePixivCommand(cmdText) {
     return { type: 'verbose', enabled: mode === 'on' ? true : mode === 'off' ? false : null };
   }
 
+  // /pixiv topic save <name> <template...>
+  // /pixiv topic <name> [count]
+  // /pixiv topic list
+  // /pixiv topic delete <name>
+  if ((args[0] || '').toLowerCase() === 'topic') {
+    const sub = (args[1] || 'list').toLowerCase();
+    if (sub === 'save') {
+      const name = String(args[2] || '').trim();
+      const template = args.slice(3).join(' ').trim();
+      return { type: 'topicSave', name, template };
+    }
+    if (sub === 'list') return { type: 'topicList' };
+    if (sub === 'delete' || sub === 'del' || sub === 'rm') {
+      const name = String(args[2] || '').trim();
+      return { type: 'topicDelete', name };
+    }
+    // run
+    const name = String(args[1] || '').trim();
+    const count = /^\d+$/.test(args[2] || '') ? Number(args[2]) : null;
+    return { type: 'topicRun', name, count };
+  }
+
   // /pixiv preset save <name> <template...>
   // /pixiv preset run <name> [count]
   // /pixiv preset list
