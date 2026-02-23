@@ -79,22 +79,42 @@ export async function fetchByParsed(client, parsed) {
       if (allIds.length >= want) break;
     }
 
+    // Optional quality mode: users | bookmark | hybrid
+    const mode = String(parsed.qualityMode || 'users').toLowerCase();
+    let rankedIds = allIds;
+    if (mode === 'bookmark' || mode === 'hybrid') {
+      // Score top slice by bookmark count to avoid too many detail requests
+      const scorePool = allIds.slice(0, Math.max(80, targetCount * 12));
+      const scored = [];
+      for (const id of scorePool) {
+        const meta = await client.illustMeta(id).catch(() => null);
+        if (!meta) continue;
+        scored.push({ id: String(id), bookmarkCount: Number(meta.bookmarkCount || 0) });
+      }
+      scored.sort((a, b) => b.bookmarkCount - a.bookmarkCount);
+      const top = scored.map(x => x.id);
+      rankedIds = mode === 'bookmark'
+        ? top
+        : [...top, ...allIds.filter(id => !top.includes(id))];
+    }
+
     const selected = parsed.range
-      ? allIds.slice(Math.max(0, parsed.range.start - 1), parsed.range.end)
-      : shuffle(allIds).slice(0, parsed.count);
+      ? rankedIds.slice(Math.max(0, parsed.range.start - 1), parsed.range.end)
+      : shuffle(rankedIds).slice(0, parsed.count);
 
     // fallback pool: when selected items fail to download/filter, keep filling from remaining candidates
     const fallbackPool = parsed.range
-      ? allIds.slice(parsed.range.end)
-      : allIds;
+      ? rankedIds.slice(parsed.range.end)
+      : rankedIds;
 
     const qualityNote = parsed.noHq ? '（nohq）' : `（分层:${stageStats.join(' > ')}）`;
+    const filterNote = `（mode=${mode}${parsed.minBookmark ? `,minBk=${parsed.minBookmark}` : ''}${parsed.ratio ? `,ratio=${parsed.ratio}` : ''}）`;
     const headerBase = parsed.range
-      ? `P站原图：关键词:${base} 区间:${parsed.range.start}-${parsed.range.end}${qualityNote}`
-      : `P站原图：关键词:${base}${qualityNote}`;
+      ? `P站原图：关键词:${base} 区间:${parsed.range.start}-${parsed.range.end}${qualityNote}${filterNote}`
+      : `P站原图：关键词:${base}${qualityNote}${filterNote}`;
 
-    tlog(parsed, 'search.pick', { selectedCount: Array.isArray(selected) ? selected.length : 0, poolCount: Array.isArray(allIds) ? allIds.length : 0, stageStats });
-    const result = await resolve(client, selected, parsed.nsfw, headerBase, { targetCount, fallbackPool });
+    tlog(parsed, 'search.pick', { selectedCount: Array.isArray(selected) ? selected.length : 0, poolCount: Array.isArray(rankedIds) ? rankedIds.length : 0, stageStats, mode });
+    const result = await resolve(client, selected, parsed.nsfw, headerBase, { targetCount, fallbackPool, minBookmark: parsed.minBookmark, ratio: parsed.ratio });
     tlog(parsed, 'search.result', { got: result?.imagePaths?.length || 0, targetCount });
     return result;
   }
@@ -204,10 +224,25 @@ export async function fetchByParsed(client, parsed) {
 async function resolve(client, ids, nsfw, headerBase, opts = {}) {
   const targetCount = Number(opts.targetCount || ids.length || 0);
   const fallbackPool = Array.isArray(opts.fallbackPool) ? opts.fallbackPool : [];
+  const minBookmark = Number(opts.minBookmark || 0);
+  const ratio = String(opts.ratio || '').trim();
 
   const pickedIds = [];
   const imagePaths = [];
   const tried = new Set();
+
+  function ratioMatch(w, h, ratioExpr) {
+    if (!ratioExpr) return true;
+    const m = String(ratioExpr).match(/^(\d+):(\d+)$/);
+    if (!m) return true;
+    const rw = Number(m[1]);
+    const rh = Number(m[2]);
+    if (!rw || !rh || !w || !h) return true;
+    const target = rw / rh;
+    const actual = Number(w) / Number(h);
+    // tolerance ~8%
+    return Math.abs(actual - target) <= target * 0.08;
+  }
 
   async function tryAdd(id) {
     if (!id || tried.has(id)) return;
@@ -215,6 +250,8 @@ async function resolve(client, ids, nsfw, headerBase, opts = {}) {
     const meta = await client.illustMeta(id);
     if (!meta?.original) return;
     if (!nsfw && Number(meta.xRestrict || 0) > 0) return;
+    if (minBookmark > 0 && Number(meta.bookmarkCount || 0) < minBookmark) return;
+    if (!ratioMatch(meta.width, meta.height, ratio)) return;
     const p = await client.downloadOriginal(meta);
     if (!p) return;
     pickedIds.push(String(id));

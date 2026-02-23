@@ -12,6 +12,41 @@ export function parsePixivCommand(cmdText) {
   const nsfw = args.includes('--nsfw');
   const noHq = args.includes('--nohq') || args.includes('--no-hq');
 
+  // Search filters:
+  // --min_bookmark=1000 / --min_bookmark 1000
+  // --ratio=9:16 / --ratio 9:16
+  // --mode=users|bookmark|hybrid / --mode hybrid
+  let minBookmark = null;
+  let ratio = null;
+  let qualityMode = null;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (/^--min_bookmark=\d+$/i.test(t)) {
+      minBookmark = Number(t.split('=')[1]);
+      continue;
+    }
+    if (/^--min_bookmark$/i.test(t) && /^\d+$/.test(args[i + 1] || '')) {
+      minBookmark = Number(args[i + 1]);
+      continue;
+    }
+    if (/^--ratio=\d+:\d+$/i.test(t)) {
+      ratio = t.split('=')[1];
+      continue;
+    }
+    if (/^--ratio$/i.test(t) && /^\d+:\d+$/.test(args[i + 1] || '')) {
+      ratio = args[i + 1];
+      continue;
+    }
+    if (/^--mode=(users|bookmark|hybrid)$/i.test(t)) {
+      qualityMode = t.split('=')[1].toLowerCase();
+      continue;
+    }
+    if (/^--mode$/i.test(t) && /^(users|bookmark|hybrid)$/i.test(args[i + 1] || '')) {
+      qualityMode = String(args[i + 1]).toLowerCase();
+      continue;
+    }
+  }
+
   // Author time-window controls:
   // --years=3 / --years 3  => random within recent N years
   // --alltime              => random across all author works
@@ -34,6 +69,19 @@ export function parsePixivCommand(cmdText) {
     if (/^--years=\d+$/i.test(x)) return false;
     if (/^--years$/i.test(x) && /^\d+$/.test(args[i + 1] || '')) return false;
     if (i > 0 && /^\d+$/.test(x) && /^--years$/i.test(args[i - 1] || '')) return false;
+
+    if (/^--min_bookmark=\d+$/i.test(x)) return false;
+    if (/^--min_bookmark$/i.test(x) && /^\d+$/.test(args[i + 1] || '')) return false;
+    if (i > 0 && /^\d+$/.test(x) && /^--min_bookmark$/i.test(args[i - 1] || '')) return false;
+
+    if (/^--ratio=\d+:\d+$/i.test(x)) return false;
+    if (/^--ratio$/i.test(x) && /^\d+:\d+$/.test(args[i + 1] || '')) return false;
+    if (i > 0 && /^\d+:\d+$/.test(x) && /^--ratio$/i.test(args[i - 1] || '')) return false;
+
+    if (/^--mode=(users|bookmark|hybrid)$/i.test(x)) return false;
+    if (/^--mode$/i.test(x) && /^(users|bookmark|hybrid)$/i.test(args[i + 1] || '')) return false;
+    if (i > 0 && /^(users|bookmark|hybrid)$/i.test(x) && /^--mode$/i.test(args[i - 1] || '')) return false;
+
     return true;
   });
 
@@ -106,7 +154,17 @@ export function parsePixivCommand(cmdText) {
   }
 
   const keyword = cleaned.slice(idx).join(' ').trim() || 'オリジナル';
-  return { type: 'search', nsfw, noHq, count, range, keyword };
+  return {
+    type: 'search',
+    nsfw,
+    noHq,
+    count,
+    range,
+    keyword,
+    minBookmark: Number.isFinite(minBookmark) ? Math.max(0, minBookmark) : null,
+    ratio: ratio || null,
+    qualityMode: qualityMode || null,
+  };
 }
 
 function clamp(v, d, min, max) {

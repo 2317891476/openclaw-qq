@@ -120,13 +120,15 @@ export class PixivClient {
     const xRestrict = Number(body?.xRestrict || 0);
     const bookmarkCount = Number(body?.bookmarkCount || 0);
     const createDate = String(body?.createDate || '');
+    const width = Number(body?.width || 0);
+    const height = Number(body?.height || 0);
 
     const pagesUrl = `https://www.pixiv.net/ajax/illust/${encodeURIComponent(id)}/pages`;
     const pr = await fetch(pagesUrl, { headers: headers(`https://www.pixiv.net/artworks/${id}`) });
     if (!pr.ok) return null;
     const pj = await pr.json();
     const original = pj?.body?.[0]?.urls?.original || null;
-    return { id: String(id), xRestrict, bookmarkCount, createDate, original };
+    return { id: String(id), xRestrict, bookmarkCount, createDate, width, height, original };
   }
 
   async downloadOriginal(meta) {
