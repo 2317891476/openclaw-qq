@@ -773,8 +773,9 @@ const plugin = {
         // IMPORTANT: keep group + private sessions separate to avoid cross-posting.
         const sessionId = isGroup ? `qqg_${groupId}_${userId}` : `qq_${userId}`;
 
-        // Context reset
-        if (RESET_COMMANDS.includes(text.trim().toLowerCase())) {
+        try {
+          // Context reset
+          if (RESET_COMMANDS.includes(text.trim().toLowerCase())) {
           const msg = await resetSession(sessionId);
           const ctx = contextKey(isGroup, groupId, userId);
           if (isGroup) await sendToQQTracked(groupId, msg, true, { contextKey: ctx }).catch(() => sendToQQ(groupId, msg, true));
@@ -999,7 +1000,15 @@ const plugin = {
           sendToQQ(userId, '服务暂时不可用，请稍后再试。');
         }
 
-        cleanupImageCache();
+        } catch (err) {
+          const emsg = String(err?.message || err);
+          log.error(`[CmdSafe] message handler error: ${emsg}`);
+          const safeMsg = '命令执行失败，请稍后重试。';
+          if (isGroup) sendToQQ(groupId, safeMsg, true);
+          else sendToQQ(userId, safeMsg);
+        } finally {
+          cleanupImageCache();
+        }
       });
 
       napcat.on('close', (code) => {
