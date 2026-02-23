@@ -59,8 +59,9 @@ export function parsePixivCommand(cmdText) {
   }
 
   // /pixiv topic save <name> <template...>
+  // /pixiv topic add <name> <template...>
   // /pixiv topic <name> [count]
-  // /pixiv topic list
+  // /pixiv topic list [name]
   // /pixiv topic delete <name>
   if ((args[0] || '').toLowerCase() === 'topic') {
     const sub = (args[1] || 'list').toLowerCase();
@@ -69,7 +70,12 @@ export function parsePixivCommand(cmdText) {
       const template = args.slice(3).join(' ').trim();
       return { type: 'topicSave', name, template };
     }
-    if (sub === 'list') return { type: 'topicList' };
+    if (sub === 'add') {
+      const name = String(args[2] || '').trim();
+      const template = args.slice(3).join(' ').trim();
+      return { type: 'topicAdd', name, template };
+    }
+    if (sub === 'list') return { type: 'topicList', name: String(args[2] || '').trim() || null };
     if (sub === 'delete' || sub === 'del' || sub === 'rm') {
       const name = String(args[2] || '').trim();
       return { type: 'topicDelete', name };

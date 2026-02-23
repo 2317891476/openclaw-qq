@@ -88,15 +88,24 @@ class PixivPlugin {
 
     // Topic commands
     if (parsed.type === 'topicList') {
-      const list = await this.topics.list();
-      if (!list.length) return { ok: false, message: '当前没有 topic。' };
-      return { ok: false, message: 'topic 列表：\n' + list.map(x => `- ${x.name}: ${x.template}`).join('\n') };
+      const list = await this.topics.list(parsed.name || null);
+      if (!list.length) return { ok: false, message: parsed.name ? `topic ${parsed.name} 暂无模板。` : '当前没有 topic。' };
+      if (parsed.name) {
+        return { ok: false, message: `topic ${parsed.name} 模板：\n` + list.map(x => `- #${x.idx + 1}: ${x.template}`).join('\n') };
+      }
+      return { ok: false, message: 'topic 列表：\n' + list.map(x => `- ${x.name} (${x.count}) ${x.template}`).join('\n') };
     }
     if (parsed.type === 'topicSave') {
       if (!isAdmin) return { ok: false, message: '仅管理员可保存 topic。' };
       if (!parsed.name || !parsed.template) return { ok: false, message: '用法：/pixiv topic save <name> <template...>' };
       await this.topics.set(parsed.name, parsed.template, { updatedBy: userId });
       return { ok: false, message: `已保存 topic: ${parsed.name}` };
+    }
+    if (parsed.type === 'topicAdd') {
+      if (!isAdmin) return { ok: false, message: '仅管理员可添加 topic 模板。' };
+      if (!parsed.name || !parsed.template) return { ok: false, message: '用法：/pixiv topic add <name> <template...>' };
+      const n = await this.topics.add(parsed.name, parsed.template, { updatedBy: userId });
+      return { ok: false, message: `已添加模板到 topic: ${parsed.name}（共 ${n} 条）` };
     }
     if (parsed.type === 'topicDelete') {
       if (!isAdmin) return { ok: false, message: '仅管理员可删除 topic。' };
@@ -106,7 +115,7 @@ class PixivPlugin {
     }
     if (parsed.type === 'topicRun') {
       if (!parsed.name) return { ok: false, message: '用法：/pixiv topic <name> [count]' };
-      const tpl = await this.topics.get(parsed.name);
+      const tpl = await this.topics.get(parsed.name, true);
       if (!tpl) return { ok: false, message: `topic 不存在: ${parsed.name}` };
       let normalized = `/pixiv ${tpl}`.trim();
       if (Number.isFinite(parsed.count) && parsed.count > 0) {
