@@ -466,7 +466,8 @@ const plugin = {
     const sendTailByContext = new Map(); // contextKey -> Promise
     const sendStatsByContext = new Map(); // contextKey -> {delayMs, ok, timeout, err}
 
-    const cfgSendQueue = config?.sendQueue || {};
+    // Config center: use plugin config (cfg) as the source of truth
+    const cfgSendQueue = cfg?.sendQueue || {};
     const GLOBAL_SEND_MAX_CONCURRENCY = Number(cfgSendQueue.maxConcurrency || 2);
     let globalSendActive = 0;
     const globalSendWaiters = [];
@@ -689,7 +690,7 @@ const plugin = {
         pixivPlugin = mod?.createPixivPlugin?.({
           logger: log,
           sendBundle: sendPixivBundleWithExistingStableStrategy,
-          pixivConfig: config?.pixiv || {},
+          pixivConfig: cfg?.pixiv || {},
         }) || null;
         if (pixivPlugin) log.info('[Pixiv] plugin loaded');
         else log.warn('[Pixiv] 插件未加载');
@@ -876,7 +877,7 @@ const plugin = {
                 delayMinMs: Number(cfgSendQueue.delayMinMs || 600),
                 delayMaxMs: Number(cfgSendQueue.delayMaxMs || 3500),
               },
-              pixiv: config?.pixiv || {},
+              pixiv: cfg?.pixiv || {},
             };
             const msg = 'config:\n' + JSON.stringify(eff, null, 2);
             if (isGroup) await sendToQQTracked(groupId, msg, true, { contextKey: contextKey(isGroup, groupId, userId) }).catch(() => sendToQQ(groupId, msg, true));
