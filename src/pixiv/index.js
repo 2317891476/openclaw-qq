@@ -90,9 +90,13 @@ class PixivPlugin {
 
     // Fav commands
     if (parsed.type === 'favList') {
-      const list = await this.favs.list(contextKey);
-      if (!list.length) return { ok: false, message: '收藏夹为空。' };
-      return { ok: false, message: 'fav 列表：\n' + list.slice(0, 30).map((x, i) => `${i + 1}. ${x.id} (${x.addedAt || 'n/a'})`).join('\n') };
+      let list = await this.favs.list(contextKey);
+      if (parsed.tag) list = list.filter(x => Array.isArray(x.tags) && x.tags.includes(parsed.tag));
+      if (!list.length) return { ok: false, message: parsed.tag ? `收藏夹中没有标签 ${parsed.tag} 的条目。` : '收藏夹为空。' };
+      return {
+        ok: false,
+        message: 'fav 列表：\n' + list.slice(0, 30).map((x, i) => `${i + 1}. ${x.id} (${x.addedAt || 'n/a'})${Array.isArray(x.tags) && x.tags.length ? ' [' + x.tags.join(',') + ']' : ''}`).join('\n'),
+      };
     }
 
     if (parsed.type === 'favAdd') {
@@ -107,6 +111,16 @@ class PixivPlugin {
       return { ok: false, message: `已收藏 ${items.length} 张（收藏总数: ${total}）` };
     }
 
+    if (parsed.type === 'favTag') {
+      if (!isAdmin) return { ok: false, message: '仅管理员可标记收藏。' };
+      if (!parsed.id || !Array.isArray(parsed.tags) || !parsed.tags.length) {
+        return { ok: false, message: '用法：/pixiv fav tag <id> <tag1,tag2...>' };
+      }
+      const ok = await this.favs.setTags(contextKey, parsed.id, parsed.tags);
+      if (!ok) return { ok: false, message: `未找到该收藏 id: ${parsed.id}` };
+      return { ok: false, message: `已标记 ${parsed.id} => [${parsed.tags.join(', ')}]` };
+    }
+
     if (parsed.type === 'favRemove') {
       if (!isAdmin) return { ok: false, message: '仅管理员可删除收藏。' };
       if (!parsed.id) return { ok: false, message: '用法：/pixiv fav remove <id>' };
@@ -115,8 +129,9 @@ class PixivPlugin {
     }
 
     if (parsed.type === 'favSend') {
-      const list = await this.favs.list(contextKey);
-      if (!list.length) return { ok: false, message: '收藏夹为空。' };
+      let list = await this.favs.list(contextKey);
+      if (parsed.tag) list = list.filter(x => Array.isArray(x.tags) && x.tags.includes(parsed.tag));
+      if (!list.length) return { ok: false, message: parsed.tag ? `收藏夹中没有标签 ${parsed.tag} 的条目。` : '收藏夹为空。' };
       const count = Math.max(1, Math.min(20, Number(parsed.count || 5)));
       const shuffled = [...list].sort(() => Math.random() - 0.5).slice(0, count);
       const imagePaths = shuffled.map(x => x.imagePath).filter(Boolean);
@@ -125,7 +140,7 @@ class PixivPlugin {
         groupId,
         userId,
         contextKey,
-        text: `Fav 随机发送 ×${imagePaths.length}/${count}`,
+        text: `Fav 随机发送 ×${imagePaths.length}/${count}${parsed.tag ? ` tag=${parsed.tag}` : ''}`,
         imagePaths,
       });
       return { ok: true, imageCount: imagePaths.length };

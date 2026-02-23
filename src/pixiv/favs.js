@@ -30,16 +30,38 @@ export class FavStore {
     const key = String(contextKey || '');
     const j = await this._read();
     const arr = Array.isArray(j[key]) ? j[key] : [];
-    const byId = new Map(arr.map(x => [String(x.id), x]));
+    const byId = new Map(arr.map(x => [String(x.id), { ...x, tags: Array.isArray(x.tags) ? x.tags : [] }]));
     for (const it of (Array.isArray(items) ? items : [])) {
       const id = String(it?.id || '').trim();
       const imagePath = String(it?.imagePath || '').trim();
       if (!id || !imagePath) continue;
-      byId.set(id, { id, imagePath, addedAt: new Date().toISOString() });
+      const old = byId.get(id);
+      byId.set(id, {
+        id,
+        imagePath,
+        addedAt: old?.addedAt || new Date().toISOString(),
+        tags: Array.isArray(old?.tags) ? old.tags : [],
+      });
     }
     j[key] = [...byId.values()];
     await this._write(j);
     return j[key].length;
+  }
+
+  async setTags(contextKey, id, tags) {
+    const key = String(contextKey || '');
+    const j = await this._read();
+    const arr = Array.isArray(j[key]) ? j[key] : [];
+    let found = false;
+    for (const it of arr) {
+      if (String(it.id) === String(id)) {
+        it.tags = [...new Set((Array.isArray(tags) ? tags : []).map(x => String(x).trim()).filter(Boolean))];
+        found = true;
+      }
+    }
+    j[key] = arr;
+    await this._write(j);
+    return found;
   }
 
   async remove(contextKey, id) {

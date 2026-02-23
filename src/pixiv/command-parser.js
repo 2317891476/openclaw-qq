@@ -18,17 +18,30 @@ export function parsePixivCommand(cmdText) {
     return { type: 'rerun', count };
   }
 
-  // /pixiv fav add|list|send [count]|remove <id>
+  // /pixiv fav add|list|send [count]|remove <id>|tag <id> <tags...>
   if ((args[0] || '').toLowerCase() === 'fav') {
     const sub = String(args[1] || 'list').toLowerCase();
     if (sub === 'add') return { type: 'favAdd' };
-    if (sub === 'list') return { type: 'favList' };
+    if (sub === 'list') {
+      const tag = (() => {
+        const i = args.findIndex(x => x === '--tag');
+        return i >= 0 ? String(args[i + 1] || '').trim() : '';
+      })();
+      return { type: 'favList', tag: tag || null };
+    }
     if (sub === 'send') {
       const count = /^\d+$/.test(args[2] || '') ? Number(args[2]) : 5;
-      return { type: 'favSend', count: Math.max(1, Math.min(20, count)) };
+      const i = args.findIndex(x => x === '--tag');
+      const tag = i >= 0 ? String(args[i + 1] || '').trim() : '';
+      return { type: 'favSend', count: Math.max(1, Math.min(20, count)), tag: tag || null };
     }
     if (sub === 'remove' || sub === 'rm' || sub === 'del') {
       return { type: 'favRemove', id: String(args[2] || '').trim() };
+    }
+    if (sub === 'tag') {
+      const id = String(args[2] || '').trim();
+      const tags = args.slice(3).join(' ').split(/[，,\s]+/).map(x => String(x).trim()).filter(Boolean);
+      return { type: 'favTag', id, tags };
     }
     return { type: 'favList' };
   }
