@@ -434,6 +434,96 @@ const plugin = {
       return isGroup ? `group:${String(groupId)}` : `user:${String(userId)}`;
     }
 
+    // ── Send queue (per context) + global concurrency + adaptive delay ──
+    const sendTailByContext = new Map(); // contextKey -> Promise
+    const sendStatsByContext = new Map(); // contextKey -> {delayMs, ok, timeout, err}
+
+    const GLOBAL_SEND_MAX_CONCURRENCY = 2;
+    let globalSendActive = 0;
+    const globalSendWaiters = [];
+
+    async function acquireGlobalSendSlot() {
+      if (globalSendActive < GLOBAL_SEND_MAX_CONCURRENCY) {
+        globalSendActive += 1;
+        return;
+      }
+      await new Promise((resolve) => globalSendWaiters.push(resolve));
+      globalSendActive += 1;
+    }
+
+    function releaseGlobalSendSlot() {
+      globalSendActive = Math.max(0, globalSendActive - 1);
+      const next = globalSendWaiters.shift();
+      if (next) next();
+    }
+
+    function getSendStats(ctxKey) {
+      const k = String(ctxKey || '');
+      if (!k) return { delayMs: 1200, ok: 0, timeout: 0, err: 0 };
+      if (!sendStatsByContext.has(k)) {
+        sendStatsByContext.set(k, { delayMs: 1200, ok: 0, timeout: 0, err: 0 });
+      }
+      return sendStatsByContext.get(k);
+    }
+
+    function adaptDelay(ctxKey, outcome) {
+      const st = getSendStats(ctxKey);
+      const min = 600;
+      const max = 3500;
+      if (outcome === 'timeout') {
+        st.timeout += 1;
+        st.delayMs = Math.min(max, Math.round(st.delayMs * 1.35 + 150));
+      } else if (outcome === 'err') {
+        st.err += 1;
+        st.delayMs = Math.min(max, Math.round(st.delayMs * 1.15 + 50));
+      } else {
+        st.ok += 1;
+        // slowly relax if stable
+        if (st.ok % 5 === 0) st.delayMs = Math.max(min, Math.round(st.delayMs * 0.92));
+      }
+    }
+
+    function sleep(ms) {
+      return new Promise((r) => setTimeout(r, ms));
+    }
+
+    function deriveContextKey(isGroup, targetId) {
+      return isGroup ? `group:${String(targetId)}` : `user:${String(targetId)}`;
+    }
+
+    function enqueueSend(ctxKey, fn, meta = {}) {
+      const key = String(ctxKey || '');
+      const prev = sendTailByContext.get(key) || Promise.resolve();
+      const next = prev
+        .catch(() => {})
+        .then(async () => {
+          await acquireGlobalSendSlot();
+          const t0 = Date.now();
+          try {
+            const res = await fn();
+            adaptDelay(key, 'ok');
+            return res;
+          } catch (e) {
+            const msg = String(e?.message || e);
+            if (/timeout/i.test(msg)) adaptDelay(key, 'timeout');
+            else adaptDelay(key, 'err');
+            log.error(`[SendQueue] failed ctx=${key} meta=${JSON.stringify(meta)} err=${msg}`);
+            throw e;
+          } finally {
+            const dt = Date.now() - t0;
+            releaseGlobalSendSlot();
+            // minor pacing to avoid bursting (uses adaptive delay)
+            const st = getSendStats(key);
+            await sleep(Math.min(500, Math.max(0, Math.round(st.delayMs * 0.15))));
+            if (dt > 0 && meta?.label) {
+              log.info(`[SendQueue] done ctx=${key} label=${meta.label} dt=${dt}ms delay=${getSendStats(key).delayMs}ms`);
+            }
+          }
+        });
+      sendTailByContext.set(key, next);
+      return next;
+    }
+
     function buildSegments({ text, imageUrls, imagePaths, replyToMessageId } = {}) {
       const segs = [];
       if (replyToMessageId) {
@@ -461,7 +551,7 @@ const plugin = {
       return segs;
     }
 
-    async function sendToQQTracked(target, text, isGroup = false, opts = {}) {
+    async function sendToQQTrackedCore(target, text, isGroup = false, opts = {}) {
       const message = opts.segments || buildSegments({
         text,
         imageUrls: opts.imageUrls,
@@ -482,7 +572,7 @@ const plugin = {
       return rpc;
     }
 
-    function sendToQQ(target, text, isGroup = false, opts = {}) {
+    function sendToQQCore(target, text, isGroup = false, opts = {}) {
       const message = opts.segments || buildSegments({
         text,
         imageUrls: opts.imageUrls,
@@ -494,13 +584,33 @@ const plugin = {
         : { action: 'send_private_msg', params: { user_id: Number(target), message } };
       const ok = napcatSend(payload);
       if (ok) log.info(`[QQ -> ${isGroup ? 'group:' : ''}${target}] ${(text || '').slice(0, 100)}`);
+      return ok;
+    }
+
+    // Public send APIs now go through the send queue.
+    async function sendToQQTracked(target, text, isGroup = false, opts = {}) {
+      const ctxKey = opts.contextKey || deriveContextKey(isGroup, target);
+      return enqueueSend(ctxKey, () => sendToQQTrackedCore(target, text, isGroup, { ...opts, contextKey: ctxKey }), {
+        label: 'tracked',
+        target,
+        isGroup,
+      });
+    }
+
+    function sendToQQ(target, text, isGroup = false, opts = {}) {
+      const ctxKey = opts.contextKey || deriveContextKey(isGroup, target);
+      // Fire-and-forget queue item
+      enqueueSend(ctxKey, async () => {
+        sendToQQCore(target, text, isGroup, opts);
+      }, { label: 'send', target, isGroup });
     }
 
     async function sendPixivBundleWithExistingStableStrategy({ isGroup, groupId, userId, contextKey: ctxKey, text, imagePaths }) {
       const targetId = isGroup ? String(groupId) : String(userId);
       const MAX_IMAGES_PER_MSG = 1;
-      const SEND_DELAY_MS = 1500;
-      const TEXT_BEFORE_IMAGES_DELAY_MS = 600;
+      const st = getSendStats(ctxKey || deriveContextKey(isGroup, targetId));
+      const SEND_DELAY_MS = Math.max(800, Math.min(5000, st.delayMs));
+      const TEXT_BEFORE_IMAGES_DELAY_MS = Math.max(300, Math.min(2500, Math.round(st.delayMs * 0.5)));
 
       if (text) {
         try {
