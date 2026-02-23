@@ -885,12 +885,64 @@ const plugin = {
             return;
           }
           if (sub === 'set') {
-            const kv = parts.slice(2).join(' ');
-            const msg = '在线 set 暂不落盘（避免插件写 openclaw.json）。\n' +
-              '请在 openclaw.json 的 openclaw-qq.config 下修改 sendQueue/pixiv 配置，然后重启。\n' +
-              `你输入的: ${kv}`;
-            if (isGroup) sendToQQ(groupId, msg, true);
-            else sendToQQ(userId, msg);
+            const kv = parts.slice(2).join(' ').trim();
+            const m = kv.match(/^([a-zA-Z0-9_.-]+)\s*=\s*(.+)$/);
+            if (!m) {
+              const msg = '用法：/config set sendQueue.delayMaxMs=3500 或 /config set pixiv.searchPages=8';
+              if (isGroup) sendToQQ(groupId, msg, true);
+              else sendToQQ(userId, msg);
+              return;
+            }
+
+            const key = m[1];
+            const rawVal = m[2];
+            const allowedPrefixes = ['sendQueue.', 'pixiv.'];
+            if (!allowedPrefixes.some(p => key.startsWith(p))) {
+              const msg = `不允许修改该 key：${key}（仅允许 sendQueue.* / pixiv.*）`;
+              if (isGroup) sendToQQ(groupId, msg, true);
+              else sendToQQ(userId, msg);
+              return;
+            }
+
+            // Parse value types
+            let val;
+            if (/^(true|false)$/i.test(rawVal)) val = /^true$/i.test(rawVal);
+            else if (/^-?\d+(?:\.\d+)?$/.test(rawVal)) val = Number(rawVal);
+            else val = String(rawVal);
+
+            // Load and patch ~/.openclaw/openclaw.json (same root as workspace's parent)
+            const cfgPath = path.join(openclawDir, 'openclaw.json');
+            try {
+              const txt = await fs.readFile(cfgPath, 'utf8');
+              const j = JSON.parse(txt);
+              j.plugins = j.plugins || {};
+              j.plugins.entries = j.plugins.entries || {};
+              j.plugins.entries['openclaw-qq'] = j.plugins.entries['openclaw-qq'] || {};
+              j.plugins.entries['openclaw-qq'].config = j.plugins.entries['openclaw-qq'].config || {};
+
+              const root = j.plugins.entries['openclaw-qq'].config;
+              const partsKey = key.split('.');
+              let cur = root;
+              for (let i = 0; i < partsKey.length - 1; i++) {
+                const k = partsKey[i];
+                cur[k] = cur[k] || {};
+                cur = cur[k];
+              }
+              cur[partsKey[partsKey.length - 1]] = val;
+
+              await fs.writeFile(cfgPath, JSON.stringify(j, null, 2) + '\n', 'utf8');
+
+              const msg = `已写入配置：${key}=${JSON.stringify(val)}\n正在重启生效...`;
+              if (isGroup) sendToQQ(groupId, msg, true);
+              else sendToQQ(userId, msg);
+
+              // Ask gateway to reload config + restart (SIGUSR1)
+              try { process.kill(process.pid, 'SIGUSR1'); } catch {}
+            } catch (e) {
+              const msg = `写配置失败：${e.message}`;
+              if (isGroup) sendToQQ(groupId, msg, true);
+              else sendToQQ(userId, msg);
+            }
             return;
           }
           const msg = '用法：/config get | /config set key=value';
