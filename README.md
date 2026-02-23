@@ -10,7 +10,12 @@
 
 # openclaw-qq
 
+[![npm version](https://img.shields.io/npm/v/@cs2317/openclaw-qq.svg)](https://www.npmjs.com/package/@cs2317/openclaw-qq)
+[![npm downloads](https://img.shields.io/npm/dm/@cs2317/openclaw-qq.svg)](https://www.npmjs.com/package/@cs2317/openclaw-qq)
+
 OpenClaw QQ plugin (NapCat / OneBot v11) with built-in Pixiv module.
+
+> npm package: https://www.npmjs.com/package/@cs2317/openclaw-qq
 
 ## 1) 安装
 
