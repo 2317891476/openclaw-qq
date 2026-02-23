@@ -1,0 +1,107 @@
+export function parsePixivCommand(cmdText) {
+  const parts = String(cmdText || '')
+    .replace(/[／]/g, '/')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(t => String(t).trim());
+  // parts[0] is /pixiv
+  const args = parts.slice(1);
+
+  const nsfw = args.includes('--nsfw');
+  const noHq = args.includes('--nohq') || args.includes('--no-hq');
+
+  // Author time-window controls:
+  // --years=3 / --years 3  => random within recent N years
+  // --alltime              => random across all author works
+  let years = null;
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (/^--years=\d+$/i.test(t)) {
+      years = Number(t.split('=')[1]);
+      continue;
+    }
+    if (/^--years$/i.test(t) && /^\d+$/.test(args[i + 1] || '')) {
+      years = Number(args[i + 1]);
+      continue;
+    }
+  }
+  const alltime = args.includes('--alltime');
+
+  const cleaned = args.filter((x, i) => {
+    if (['--nsfw', '--nohq', '--no-hq', '--alltime'].includes(x)) return false;
+    if (/^--years=\d+$/i.test(x)) return false;
+    if (/^--years$/i.test(x) && /^\d+$/.test(args[i + 1] || '')) return false;
+    if (i > 0 && /^\d+$/.test(x) && /^--years$/i.test(args[i - 1] || '')) return false;
+    return true;
+  });
+
+  // /pixiv author <uid|name> [count] [--years N|--years=N] [--alltime]
+  // e.g. /pixiv author ASK 8 --years 3
+  if ((cleaned[0] || '').toLowerCase() === 'author') {
+    const rawAuthorArgs = args.slice(1);
+    const kept = [];
+    let count = 5;
+
+    for (let i = 0; i < rawAuthorArgs.length; i++) {
+      const t = String(rawAuthorArgs[i] || '');
+      if (!t) continue;
+      if (t === '--nsfw' || t === '--nohq' || t === '--no-hq' || t === '--alltime') continue;
+      if (/^--years=\d+$/i.test(t)) continue;
+      if (/^--years$/i.test(t)) {
+        if (/^\d+$/.test(rawAuthorArgs[i + 1] || '')) i += 1;
+        continue;
+      }
+      kept.push(t);
+    }
+
+    // Optional trailing count
+    if (kept.length > 1 && /^\d+$/.test(kept[kept.length - 1])) {
+      count = clamp(kept[kept.length - 1], 5, 1, 20);
+      kept.pop();
+    }
+
+    const yearsClamped = Number.isFinite(years) ? Math.max(1, Math.min(20, years)) : null;
+    return {
+      type: 'author',
+      nsfw,
+      noHq,
+      count,
+      author: kept.join(' ').trim(),
+      years: yearsClamped,
+      alltime,
+    };
+  }
+
+  // /pixiv rank <count> <daily|weekly|monthly|all>
+  if ((cleaned[0] || '').toLowerCase() === 'rank') {
+    const count = clamp(cleaned[1], 5, 1, 20);
+    const mode = (cleaned[2] || 'daily').toLowerCase();
+    return { type: 'rank', nsfw, noHq, count, mode: ['daily', 'weekly', 'monthly', 'all'].includes(mode) ? mode : 'daily' };
+  }
+
+  // /pixiv [count|range] [keyword...]
+  let count = 5;
+  let range = null;
+  let idx = 0;
+  if (/^\d+$/.test(cleaned[0] || '')) {
+    count = clamp(cleaned[0], 5, 1, 20);
+    idx = 1;
+  } else if (/^\d+-\d+$/.test(cleaned[0] || '')) {
+    const [a, b] = cleaned[0].split('-').map(n => Number(n));
+    range = { start: Math.max(1, a), end: Math.max(a, b) };
+    idx = 1;
+  }
+
+  const keyword = cleaned.slice(idx).join(' ').trim() || 'オリジナル';
+  return { type: 'search', nsfw, noHq, count, range, keyword };
+}
+
+function clamp(v, d, min, max) {
+  let n = Number(v);
+  if (!Number.isFinite(n)) n = d;
+  if (n < min) n = min;
+  if (n > max) n = max;
+  return n;
+}
