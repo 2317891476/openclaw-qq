@@ -7,9 +7,10 @@ export function createPixivPlugin(deps) {
 }
 
 class PixivPlugin {
-  constructor({ logger, sendBundle }) {
+  constructor({ logger, sendBundle, pixivConfig = {} }) {
     this.log = logger;
     this.sendBundle = sendBundle;
+    this.cfg = pixivConfig;
     this.client = new PixivClient();
     this.rate = new Map();
   }
@@ -23,7 +24,11 @@ class PixivPlugin {
     }
     this.rate.set(contextKey, now);
 
-    const out = await fetchByParsed(this.client, { ...parsed, traceId });
+    const out = await fetchByParsed(this.client, {
+      ...parsed,
+      traceId,
+      cfg: this.cfg,
+    });
     if (!out.ok) return out;
 
     await this.sendBundle({
@@ -48,6 +53,7 @@ class PixivPlugin {
       author: payload.author || '',
       mode: payload.mode || 'daily',
       traceId: payload.traceId || null,
+      cfg: this.cfg,
     };
     return await fetchByParsed(this.client, parsed);
   }

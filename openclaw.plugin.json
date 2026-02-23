@@ -34,6 +34,25 @@
         "type": "number",
         "description": "HTTP port for proactive /send endpoint (0 = disabled)",
         "default": 0
+      },
+      "sendQueue": {
+        "type": "object",
+        "description": "Send queue and adaptive pacing settings",
+        "properties": {
+          "maxConcurrency": { "type": "number", "default": 2 },
+          "delayStartMs": { "type": "number", "default": 1200 },
+          "delayMinMs": { "type": "number", "default": 600 },
+          "delayMaxMs": { "type": "number", "default": 3500 }
+        }
+      },
+      "pixiv": {
+        "type": "object",
+        "description": "Pixiv module settings",
+        "properties": {
+          "searchPages": { "type": "number", "default": 8 },
+          "searchPagesLarge": { "type": "number", "default": 12 },
+          "authorDefaultYears": { "type": "number", "default": 3 }
+        }
       }
     }
   }

@@ -4,7 +4,7 @@ import { normalizeTag } from './tag-mapping.js';
 const QUALITY_TAGS = ['10000users入り', '5000users入り', '1000users入り'];
 
 // Default recent-years window for /pixiv author when not using --alltime.
-// You can tune this value globally.
+// (Overridable via config: pixiv.authorDefaultYears)
 const AUTHOR_DEFAULT_YEARS = 3;
 
 // Author exact-id overrides for high-confidence aliases.
@@ -59,7 +59,10 @@ export async function fetchByParsed(client, parsed) {
     for (const stage of queryPlan) {
       // Widen candidate pool so random sampling has enough diversity.
       // More pages when targetCount is large to reduce "insufficient results".
-      const pages = targetCount >= 8 ? 12 : 8;
+      const cfg = parsed?.cfg || {};
+      const pagesSmall = Number(cfg.searchPages || 8);
+      const pagesLarge = Number(cfg.searchPagesLarge || 12);
+      const pages = targetCount >= 8 ? pagesLarge : pagesSmall;
       const ids = await client.searchIllustIds(stage.query, { nsfw: parsed.nsfw, pages });
       let added = 0;
       for (const id of ids) {
@@ -135,7 +138,9 @@ export async function fetchByParsed(client, parsed) {
     const ids = await client.userIllustIds(uid);
     if (!ids.length) return { ok: false, message: `画师无作品: ${parsed.author}` };
 
-    const years = Number(parsed.years || AUTHOR_DEFAULT_YEARS);
+    const cfg = parsed?.cfg || {};
+    const defaultYears = Number(cfg.authorDefaultYears || AUTHOR_DEFAULT_YEARS);
+    const years = Number(parsed.years || defaultYears);
     const useAllTime = !!parsed.alltime;
     const cutoffTs = Date.now() - years * 365 * 24 * 60 * 60 * 1000;
 

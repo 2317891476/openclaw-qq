@@ -466,7 +466,8 @@ const plugin = {
     const sendTailByContext = new Map(); // contextKey -> Promise
     const sendStatsByContext = new Map(); // contextKey -> {delayMs, ok, timeout, err}
 
-    const GLOBAL_SEND_MAX_CONCURRENCY = 2;
+    const cfgSendQueue = config?.sendQueue || {};
+    const GLOBAL_SEND_MAX_CONCURRENCY = Number(cfgSendQueue.maxConcurrency || 2);
     let globalSendActive = 0;
     const globalSendWaiters = [];
 
@@ -489,15 +490,16 @@ const plugin = {
       const k = String(ctxKey || '');
       if (!k) return { delayMs: 1200, ok: 0, timeout: 0, err: 0 };
       if (!sendStatsByContext.has(k)) {
-        sendStatsByContext.set(k, { delayMs: 1200, ok: 0, timeout: 0, err: 0 });
+        const start = Number(cfgSendQueue.delayStartMs || 1200);
+        sendStatsByContext.set(k, { delayMs: start, ok: 0, timeout: 0, err: 0 });
       }
       return sendStatsByContext.get(k);
     }
 
     function adaptDelay(ctxKey, outcome) {
       const st = getSendStats(ctxKey);
-      const min = 600;
-      const max = 3500;
+      const min = Number(cfgSendQueue.delayMinMs || 600);
+      const max = Number(cfgSendQueue.delayMaxMs || 3500);
       if (outcome === 'timeout') {
         st.timeout += 1;
         st.delayMs = Math.min(max, Math.round(st.delayMs * 1.35 + 150));
@@ -687,6 +689,7 @@ const plugin = {
         pixivPlugin = mod?.createPixivPlugin?.({
           logger: log,
           sendBundle: sendPixivBundleWithExistingStableStrategy,
+          pixivConfig: config?.pixiv || {},
         }) || null;
         if (pixivPlugin) log.info('[Pixiv] plugin loaded');
         else log.warn('[Pixiv] 插件未加载');
@@ -854,6 +857,46 @@ const plugin = {
           return;
         }
 
+
+        // Built-in command: /config get|set (admin only)
+        if (/^\/config(\s|$)/i.test(cmd)) {
+          if (!adminUsers.has(String(userId))) {
+            const msg = '无权限：仅管理员可用 /config';
+            if (isGroup) sendToQQ(groupId, msg, true);
+            else sendToQQ(userId, msg);
+            return;
+          }
+          const parts = cmd.split(/\s+/).filter(Boolean);
+          const sub = (parts[1] || 'get').toLowerCase();
+          if (sub === 'get') {
+            const eff = {
+              sendQueue: {
+                maxConcurrency: GLOBAL_SEND_MAX_CONCURRENCY,
+                delayStartMs: Number(cfgSendQueue.delayStartMs || 1200),
+                delayMinMs: Number(cfgSendQueue.delayMinMs || 600),
+                delayMaxMs: Number(cfgSendQueue.delayMaxMs || 3500),
+              },
+              pixiv: config?.pixiv || {},
+            };
+            const msg = 'config:\n' + JSON.stringify(eff, null, 2);
+            if (isGroup) await sendToQQTracked(groupId, msg, true, { contextKey: contextKey(isGroup, groupId, userId) }).catch(() => sendToQQ(groupId, msg, true));
+            else await sendToQQTracked(userId, msg, false, { contextKey: contextKey(isGroup, groupId, userId) }).catch(() => sendToQQ(userId, msg));
+            return;
+          }
+          if (sub === 'set') {
+            const kv = parts.slice(2).join(' ');
+            const msg = '在线 set 暂不落盘（避免插件写 openclaw.json）。\n' +
+              '请在 openclaw.json 的 openclaw-qq.config 下修改 sendQueue/pixiv 配置，然后重启。\n' +
+              `你输入的: ${kv}`;
+            if (isGroup) sendToQQ(groupId, msg, true);
+            else sendToQQ(userId, msg);
+            return;
+          }
+          const msg = '用法：/config get | /config set key=value';
+          if (isGroup) sendToQQ(groupId, msg, true);
+          else sendToQQ(userId, msg);
+          return;
+        }
 
         // Built-in command: /diag (runtime diagnostics)
         if (/^\/diag$/i.test(cmd)) {
