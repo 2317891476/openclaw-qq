@@ -1,13 +1,17 @@
-import { ProxyAgent, setGlobalDispatcher } from 'undici';
+import { createRequire } from 'node:module';
 
 const UA = 'Mozilla/5.0';
 
-const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.ALL_PROXY || '';
-if (proxyUrl) {
-  try {
-    setGlobalDispatcher(new ProxyAgent(proxyUrl));
-  } catch {}
-}
+// Optional proxy bridge for Node fetch(undici). Must never hard-fail plugin loading.
+try {
+  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.ALL_PROXY || '';
+  if (proxyUrl) {
+    const require = createRequire(import.meta.url);
+    const { ProxyAgent, setGlobalDispatcher } = require('undici');
+    if (ProxyAgent && setGlobalDispatcher) setGlobalDispatcher(new ProxyAgent(proxyUrl));
+  }
+} catch {}
+
 
 function normText(s) {
   return String(s || '')
