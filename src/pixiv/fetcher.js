@@ -268,6 +268,11 @@ export async function fetchByParsed(client, parsed) {
       if (!uid) return { ok: false, message: `未找到画师: ${parsed.author}` };
     }
 
+    // Always cache successful alias -> uid mapping for acceleration next time.
+    if (parsed?.aliasStore && rawAuthor && /^\d+$/.test(String(uid))) {
+      await parsed.aliasStore.set(rawAuthor, uid, 'resolved');
+    }
+
     const targetCount = parsed.count || 5;
     let ids = await client.userIllustIds(uid);
     if (!ids.length && fallbackCandidateUids.length > 0) {
