@@ -30,7 +30,45 @@ function headers(referer) {
   };
 }
 
+function extractPixivUserIds(text) {
+  const s = String(text || '');
+  const out = [];
+  const re = /pixiv\.net\/(?:[a-z]{2}(?:-[a-z]+)?\/)?users\/(\d+)/gi;
+  let m;
+  while ((m = re.exec(s))) out.push(String(m[1]));
+  return [...new Set(out)];
+}
+
 export class PixivClient {
+  async searchUserIdByWeb(query) {
+    const q = String(query || '').trim();
+    if (!q) return null;
+
+    const candidates = [];
+
+    // 1) DuckDuckGo HTML fallback (no API key)
+    try {
+      const u = `https://duckduckgo.com/html/?q=${encodeURIComponent(`site:pixiv.net/users ${q}`)}`;
+      const r = await fetch(u, { headers: { 'User-Agent': UA, 'Accept': 'text/html' } });
+      if (r.ok) {
+        const html = await r.text();
+        candidates.push(...extractPixivUserIds(html));
+      }
+    } catch {}
+
+    // 2) Pixiv tag page may contain linked user profile URLs
+    try {
+      const tu = `https://www.pixiv.net/tags/${encodeURIComponent(q)}`;
+      const r2 = await fetch(tu, { headers: { 'User-Agent': UA, Referer: 'https://www.pixiv.net/' } });
+      if (r2.ok) {
+        const html2 = await r2.text();
+        candidates.push(...extractPixivUserIds(html2));
+      }
+    } catch {}
+
+    return candidates.length ? candidates[0] : null;
+  }
+
   async searchIllustIds(keyword, { nsfw = false, pages = 3 } = {}) {
     const mode = nsfw ? 'all' : 'safe';
     const ids = [];
