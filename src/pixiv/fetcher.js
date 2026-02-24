@@ -210,6 +210,7 @@ export async function fetchByParsed(client, parsed) {
   if (parsed.type === 'author') {
     const rawAuthor = String(parsed.author || '').trim();
     let uid = rawAuthor;
+    let fallbackCandidateUids = [];
     if (!uid) return { ok: false, message: 'author 参数不能为空' };
 
     if (!/^\d+$/.test(uid)) {
@@ -222,11 +223,16 @@ export async function fetchByParsed(client, parsed) {
           uid = AUTHOR_ID_MAP.get(key);
         } else {
           const users = await client.searchUsers(uid);
+          const userCandidates = Array.isArray(users) ? users.map(u => String(u.id || '')).filter(Boolean) : [];
+          fallbackCandidateUids = userCandidates.slice(0, 8);
 
           // Web fallback: same idea as manual "search web -> pick pixiv /users/<uid>"
           // to handle cross-language names (e.g. 中文名 -> 日文作者页).
           let webUid = null;
           try { webUid = await client.searchUserIdByWeb(uid); } catch {}
+          if (webUid) {
+            fallbackCandidateUids = [String(webUid), ...fallbackCandidateUids.filter(x => x !== String(webUid))];
+          }
 
           if (!users?.length) {
             if (webUid) {
@@ -265,7 +271,21 @@ export async function fetchByParsed(client, parsed) {
     }
 
     const targetCount = parsed.count || 5;
-    const ids = await client.userIllustIds(uid);
+    let ids = await client.userIllustIds(uid);
+    if (!ids.length && fallbackCandidateUids.length > 0) {
+      for (const altUid of fallbackCandidateUids) {
+        if (!altUid || altUid === uid) continue;
+        const altIds = await client.userIllustIds(altUid).catch(() => []);
+        if (altIds.length) {
+          uid = altUid;
+          ids = altIds;
+          if (parsed?.aliasStore && rawAuthor) {
+            await parsed.aliasStore.set(rawAuthor, uid, 'fallbackHasWorks');
+          }
+          break;
+        }
+      }
+    }
     if (!ids.length) return { ok: false, message: `画师无作品: ${parsed.author}` };
 
     const cfg = parsed?.cfg || {};
