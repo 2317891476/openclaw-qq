@@ -139,6 +139,8 @@ export async function fetchByParsed(client, parsed) {
 
   if (parsed.type === 'authorProfile') {
     let uid = String(parsed.author || '').trim();
+    const aliasUid = (!/^\d+$/.test(uid) && parsed?.aliasStore) ? await parsed.aliasStore.resolve(uid) : null;
+    if (aliasUid) uid = aliasUid;
     if (!uid) return { ok: false, message: '用法：/pixiv author profile <uid|name>' };
     if (!/^\d+$/.test(uid)) {
       const key = uid.toLowerCase();
@@ -196,31 +198,41 @@ export async function fetchByParsed(client, parsed) {
   }
 
   if (parsed.type === 'author') {
-    let uid = parsed.author;
+    const rawAuthor = String(parsed.author || '').trim();
+    let uid = rawAuthor;
     if (!uid) return { ok: false, message: 'author 参数不能为空' };
+
     if (!/^\d+$/.test(uid)) {
-      const key = String(uid).trim().toLowerCase();
-      if (AUTHOR_ID_MAP.has(key)) {
-        uid = AUTHOR_ID_MAP.get(key);
+      const aliasUid = parsed?.aliasStore ? await parsed.aliasStore.resolve(uid) : null;
+      if (aliasUid) {
+        uid = aliasUid;
       } else {
-        const users = await client.searchUsers(uid);
-        if (!users?.length) return { ok: false, message: `未找到画师: ${parsed.author}` };
+        const key = String(uid).trim().toLowerCase();
+        if (AUTHOR_ID_MAP.has(key)) {
+          uid = AUTHOR_ID_MAP.get(key);
+        } else {
+          const users = await client.searchUsers(uid);
+          if (!users?.length) return { ok: false, message: `未找到画师: ${parsed.author}` };
 
-        // If not exact and multiple candidates, ask user to pick.
-        const isExact = !!users[0]?.exact;
-        if (!isExact && users.length > 1) {
-          const top = users.slice(0, 5).map(u => ({ id: u.id, name: u.name, account: u.account || '' }));
-          return {
-            ok: false,
-            message:
-              `找到多个画师候选，请选择：\n` +
-              top.map((u, i) => `${i + 1}. ${u.name}${u.account ? ` (@${u.account})` : ''} — ${u.id}`).join('\n') +
-              `\n\n用法：/pixiv author pick <uid> ${parsed.count || 5}`,
-          };
+          const isExact = !!users[0]?.exact;
+          if (!isExact && users.length > 1) {
+            const top = users.slice(0, 5).map(u => ({ id: u.id, name: u.name, account: u.account || '' }));
+            return {
+              ok: false,
+              message:
+                `找到多个画师候选，请选择：\n` +
+                top.map((u, i) => `${i + 1}. ${u.name}${u.account ? ` (@${u.account})` : ''} — ${u.id}`).join('\n') +
+                `\n\n用法：/pixiv author pick <uid> ${parsed.count || 5}`,
+            };
+          }
+
+          uid = users?.[0]?.id || '';
+          if (uid && parsed?.aliasStore) {
+            await parsed.aliasStore.set(rawAuthor, uid, 'searchUsers');
+          }
         }
-
-        uid = users?.[0]?.id || '';
       }
+
       if (!uid) return { ok: false, message: `未找到画师: ${parsed.author}` };
     }
 

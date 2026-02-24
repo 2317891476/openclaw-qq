@@ -103,13 +103,14 @@ export class PixivClient {
       if (!map.has(uid)) map.set(uid, { id: uid, name: uname, account: '' });
     }
 
-    const arr = [...map.values()]
+    const raw = [...map.values()];
+    const arr = raw
       .map((u, i) => ({ ...u, _score: scoreUserCandidate(q, u), _idx: i }))
       .filter(u => u._score > 0)
       .sort((a, b) => (b._score - a._score) || (a._idx - b._idx))
       .map(({ _score, _idx, ...u }) => u);
 
-    return arr;
+    return arr.length ? arr : raw;
   }
 
   async userIllustIds(userId) {

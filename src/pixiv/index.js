@@ -6,6 +6,7 @@ import { PixivSettingsStore } from './settings.js';
 import { LastStateStore } from './last-state.js';
 import { FavStore } from './favs.js';
 import { TopicStore } from './topics.js';
+import { AuthorAliasStore } from './aliases.js';
 
 export function createPixivPlugin(deps) {
   return new PixivPlugin(deps);
@@ -23,6 +24,7 @@ class PixivPlugin {
     this.lastState = new LastStateStore(workspaceDir);
     this.favs = new FavStore(workspaceDir);
     this.topics = new TopicStore(workspaceDir);
+    this.authorAliases = new AuthorAliasStore(workspaceDir);
   }
 
   async handleCommand({ cmd, traceId = null, isGroup, groupId, userId, contextKey, isAdmin = false }) {
@@ -231,6 +233,7 @@ class PixivPlugin {
       ...parsed,
       traceId,
       cfg: this.cfg,
+      aliasStore: this.authorAliases,
     });
     if (!out.ok) return out;
 
@@ -281,6 +284,6 @@ class PixivPlugin {
       traceId: payload.traceId || null,
       cfg: this.cfg,
     };
-    return await fetchByParsed(this.client, parsed);
+    return await fetchByParsed(this.client, { ...parsed, aliasStore: this.authorAliases });
   }
 }
