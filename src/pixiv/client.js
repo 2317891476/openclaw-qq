@@ -1,5 +1,27 @@
 const UA = 'Mozilla/5.0';
 
+function normText(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[\s·・_\-]+/g, '')
+    .trim();
+}
+
+function scoreUserCandidate(q, user) {
+  const nq = normText(q);
+  const name = normText(user?.name || '');
+  const account = normText(user?.account || '');
+  const id = String(user?.id || '').trim();
+  if (!nq) return 0;
+  if (id === q) return 120;
+  if (name && name === nq) return 110;
+  if (account && account === nq) return 100;
+  if (name && (name.includes(nq) || nq.includes(name))) return 70;
+  if (account && (account.includes(nq) || nq.includes(account))) return 60;
+  return 0;
+}
+
 function headers(referer) {
   return {
     'User-Agent': UA,
@@ -47,19 +69,17 @@ export class PixivClient {
         .filter(u => u.id);
 
       if (out.length) {
-        // Rule:
-        // 1) exact match first (name/account/id)
-        // 2) otherwise keep API rank order (first result)
-        const exact = out.find(u =>
-          u.id === q ||
-          u.name.trim().toLowerCase() === lower ||
-          u.account.trim().toLowerCase() === lower
-        );
-        if (exact) {
-          exact.exact = true;
-          return [exact, ...out.filter(u => u.id !== exact.id)];
+        // Re-rank by lexical relevance, suppress irrelevant candidates.
+        const scored = out
+          .map((u, i) => ({ ...u, _score: scoreUserCandidate(q, u), _idx: i }))
+          .filter(u => u._score > 0)
+          .sort((a, b) => (b._score - a._score) || (a._idx - b._idx));
+
+        if (scored.length) {
+          const top = scored[0];
+          if (top._score >= 100) top.exact = true;
+          return scored.map(({ _score, _idx, ...u }) => u);
         }
-        return out;
       }
     }
 
@@ -79,12 +99,12 @@ export class PixivClient {
       if (!map.has(uid)) map.set(uid, { id: uid, name: uname, account: '' });
     }
 
-    const arr = [...map.values()];
-    arr.sort((a, b) => {
-      const ae = String(a.name || '').toLowerCase() === lower ? 1 : 0;
-      const be = String(b.name || '').toLowerCase() === lower ? 1 : 0;
-      return be - ae;
-    });
+    const arr = [...map.values()]
+      .map((u, i) => ({ ...u, _score: scoreUserCandidate(q, u), _idx: i }))
+      .filter(u => u._score > 0)
+      .sort((a, b) => (b._score - a._score) || (a._idx - b._idx))
+      .map(({ _score, _idx, ...u }) => u);
+
     return arr;
   }
 
