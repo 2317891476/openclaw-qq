@@ -62,7 +62,7 @@ export class PixivClient {
     // 1) DuckDuckGo HTML fallback (no API key)
     try {
       const u = `https://duckduckgo.com/html/?q=${encodeURIComponent(`site:pixiv.net/users ${q}`)}`;
-      const r = await fetch(u, { headers: { 'User-Agent': UA, 'Accept': 'text/html' } });
+      const r = await fetch(u, { headers: { 'User-Agent': UA, 'Accept': 'text/html' }, signal: AbortSignal.timeout(3500) });
       if (r.ok) {
         const html = await r.text();
         candidates.push(...extractPixivUserIds(html));
@@ -72,7 +72,7 @@ export class PixivClient {
     // 2) Pixiv tag page may contain linked user profile URLs
     try {
       const tu = `https://www.pixiv.net/tags/${encodeURIComponent(q)}`;
-      const r2 = await fetch(tu, { headers: { 'User-Agent': UA, Referer: 'https://www.pixiv.net/' } });
+      const r2 = await fetch(tu, { headers: { 'User-Agent': UA, Referer: 'https://www.pixiv.net/' }, signal: AbortSignal.timeout(3500) });
       if (r2.ok) {
         const html2 = await r2.text();
         candidates.push(...extractPixivUserIds(html2));

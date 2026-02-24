@@ -12,19 +12,24 @@ function norm(s) {
 export class AuthorAliasStore {
   constructor(workspaceDir) {
     this.path = path.join(workspaceDir || process.cwd(), 'pixiv-author-aliases.json');
+    this._cache = null;
   }
 
   async _read() {
+    if (this._cache) return this._cache;
     try {
       const txt = await fs.readFile(this.path, 'utf8');
       const j = JSON.parse(txt);
-      return j && typeof j === 'object' ? j : { aliases: {} };
+      this._cache = (j && typeof j === 'object') ? j : { aliases: {} };
+      return this._cache;
     } catch {
-      return { aliases: {} };
+      this._cache = { aliases: {} };
+      return this._cache;
     }
   }
 
   async _write(obj) {
+    this._cache = obj;
     await fs.mkdir(path.dirname(this.path), { recursive: true });
     await fs.writeFile(this.path, JSON.stringify(obj, null, 2) + '\n', 'utf8');
   }

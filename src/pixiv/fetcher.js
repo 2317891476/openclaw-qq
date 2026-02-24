@@ -226,26 +226,29 @@ export async function fetchByParsed(client, parsed) {
           const userCandidates = Array.isArray(users) ? users.map(u => String(u.id || '')).filter(Boolean) : [];
           fallbackCandidateUids = userCandidates.slice(0, 8);
 
-          // Web fallback: same idea as manual "search web -> pick pixiv /users/<uid>"
-          // to handle cross-language names (e.g. 中文名 -> 日文作者页).
-          let webUid = null;
-          try { webUid = await client.searchUserIdByWeb(uid); } catch {}
-          if (webUid) {
-            fallbackCandidateUids = [String(webUid), ...fallbackCandidateUids.filter(x => x !== String(webUid))];
-          }
-
           if (!users?.length) {
+            let webUid = null;
+            try { webUid = await client.searchUserIdByWeb(uid); } catch {}
             if (webUid) {
               uid = webUid;
+              fallbackCandidateUids = [String(webUid), ...fallbackCandidateUids.filter(x => x !== String(webUid))];
               if (parsed?.aliasStore) await parsed.aliasStore.set(rawAuthor, uid, 'webFallback');
             } else {
               return { ok: false, message: `未找到画师: ${parsed.author}` };
             }
           } else {
             const isExact = !!users[0]?.exact;
-            if (!isExact && users.length > 1) {
+            if (isExact || users.length === 1) {
+              uid = users?.[0]?.id || '';
+              if (uid && parsed?.aliasStore) {
+                await parsed.aliasStore.set(rawAuthor, uid, 'searchUsers');
+              }
+            } else {
+              let webUid = null;
+              try { webUid = await client.searchUserIdByWeb(uid); } catch {}
               if (webUid) {
                 uid = webUid;
+                fallbackCandidateUids = [String(webUid), ...fallbackCandidateUids.filter(x => x !== String(webUid))];
                 if (parsed?.aliasStore) await parsed.aliasStore.set(rawAuthor, uid, 'webFallback');
               } else {
                 const top = users.slice(0, 5).map(u => ({ id: u.id, name: u.name, account: u.account || '' }));
@@ -256,11 +259,6 @@ export async function fetchByParsed(client, parsed) {
                     top.map((u, i) => `${i + 1}. ${u.name}${u.account ? ` (@${u.account})` : ''} — ${u.id}`).join('\n') +
                     `\n\n用法：/pixiv author pick <uid> ${parsed.count || 5}`,
                 };
-              }
-            } else {
-              uid = users?.[0]?.id || '';
-              if (uid && parsed?.aliasStore) {
-                await parsed.aliasStore.set(rawAuthor, uid, 'searchUsers');
               }
             }
           }
