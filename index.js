@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import { createStorage } from './src/storage/db.js';
 
 const plugin = {
   register(api) {
@@ -40,9 +41,10 @@ const plugin = {
     // We watch the session .jsonl files and forward new assistant text to the right QQ user.
 
     const sessionFileOffsets = new Map(); // sessionFile -> lastReadByte
-    const forwardedSignatures = new Set(); // avoid duplicates across restarts/events
-    const recentlySentTexts = new Map(); // sessionKey -> [{norm, atMs}]
+    const forwardedSignatures = new Set(); // in-memory fallback if sqlite unavailable
+    const recentlySentTexts = new Map(); // in-memory fallback if sqlite unavailable
     const MAX_RECENT_MS = 60000;
+    let storage = null;
 
     function normalizeReplyText(text) {
       return String(text || '')
@@ -54,9 +56,13 @@ const plugin = {
     }
 
     function markRecentlySent(sessionKey, text) {
-      const now = Date.now();
       const norm = normalizeReplyText(text);
       if (!norm) return;
+      if (storage) {
+        storage.markRecentlySent(sessionKey, norm);
+        return;
+      }
+      const now = Date.now();
       const prev = recentlySentTexts.get(sessionKey) || [];
       const kept = prev.filter((x) => (now - x.atMs) < MAX_RECENT_MS);
       kept.push({ norm, atMs: now });
@@ -64,9 +70,10 @@ const plugin = {
     }
 
     function wasRecentlySent(sessionKey, text) {
-      const now = Date.now();
       const norm = normalizeReplyText(text);
       if (!norm) return false;
+      if (storage) return storage.wasRecentlySent(sessionKey, norm, MAX_RECENT_MS);
+      const now = Date.now();
       const prev = recentlySentTexts.get(sessionKey) || [];
       const kept = prev.filter((x) => (now - x.atMs) < MAX_RECENT_MS);
       recentlySentTexts.set(sessionKey, kept);
@@ -151,15 +158,18 @@ const plugin = {
 
             const sig = extracted.textSignature || obj.id || crypto.createHash('sha1').update(extracted.text).digest('hex');
             const uniqueKey = `${fileId}:${sig}`;
-            if (forwardedSignatures.has(uniqueKey)) continue;
+            const seenForward = storage
+              ? storage.seenForwardSignature(uniqueKey)
+              : forwardedSignatures.has(uniqueKey);
+            if (seenForward) continue;
 
             // Suppress echo of messages we already sent synchronously
             if (wasRecentlySent(sessionKey, extracted.text)) {
-              forwardedSignatures.add(uniqueKey);
+              if (!storage) forwardedSignatures.add(uniqueKey);
               continue;
             }
 
-            forwardedSignatures.add(uniqueKey);
+            if (!storage) forwardedSignatures.add(uniqueKey);
             if (target.isGroup) sendToQQ(target.groupId, extracted.text, true);
             else sendToQQ(target.userId, extracted.text, false);
           }
@@ -216,6 +226,7 @@ const plugin = {
     function isDuplicate(msgId) {
       if (!msgId) return false;
       const key = String(msgId);
+      if (storage) return storage.seenInboundMessageId(key);
       if (processedMsgIds.has(key)) return true;
       processedMsgIds.set(key, Date.now());
       if (processedMsgIds.size > 1000) {
@@ -799,6 +810,7 @@ const plugin = {
 
         // IMPORTANT: keep group + private sessions separate to avoid cross-posting.
         const sessionId = isGroup ? `qqg_${groupId}_${userId}` : `qq_${userId}`;
+        storage?.rememberSession(contextKey(isGroup, groupId, userId), sessionId, userId, groupId, isGroup);
 
         try {
           // Context reset
@@ -986,6 +998,7 @@ const plugin = {
           const ctx = contextKey(isGroup, groupId, userId);
           const st = getSendStats(ctx);
           const qDepth = sendTailByContext.has(ctx) ? 1 : 0;
+          const dbStats = storage?.stats?.();
           const info = [
             `diag:`,
             `- napcat: ${napcat && napcat.readyState === WebSocket.OPEN ? 'OPEN' : (napcat ? 'NOT_OPEN' : 'NONE')}`,
@@ -995,6 +1008,12 @@ const plugin = {
             `- lastDisconnectCode: ${lastDisconnectCode ?? 'n/a'}`,
             `- sendDelayMs: ${st.delayMs}`,
             `- sendStats(ok/timeout/err): ${st.ok}/${st.timeout}/${st.err}`,
+            `- queueActiveFlag: ${qDepth}`,
+            `- storage: ${dbStats ? 'sqlite' : 'memory-only'}`,
+            ...(dbStats ? [
+              `- storagePath: ${dbStats.path}`,
+              `- dedupe(inbound/forward/recent): ${dbStats.inbound}/${dbStats.forward}/${dbStats.recentReply}`,
+            ] : []),
           ].join('\n');
           if (isGroup) await sendToQQTracked(groupId, info, true, { contextKey: ctx }).catch(() => sendToQQ(groupId, info, true));
           else await sendToQQTracked(userId, info, false, { contextKey: ctx }).catch(() => sendToQQ(userId, info));
@@ -1072,6 +1091,11 @@ const plugin = {
       id: 'qq-napcat',
       async start() {
         stopped = false;
+        storage = await createStorage({ workspaceDir, logger: log }).catch((err) => {
+          log.error(`[Storage] init failed, fallback to memory-only: ${err.message}`);
+          return null;
+        });
+        storage?.prune?.();
         connectNapCat();
         await startSessionForwarder();
 
@@ -1458,6 +1482,8 @@ const plugin = {
         await stopSessionForwarder();
         if (napcat) napcat.close();
         if (httpServer) await new Promise((resolve) => httpServer.close(resolve));
+        try { storage?.close?.(); } catch {}
+        storage = null;
         log.info('openclaw-qq plugin stopped');
       },
     });
