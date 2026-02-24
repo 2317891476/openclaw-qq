@@ -209,6 +209,8 @@ export async function fetchByParsed(client, parsed) {
 
   if (parsed.type === 'author') {
     const rawAuthor = String(parsed.author || '').trim();
+    const resolveT0 = Date.now();
+    let resolvedFrom = /^\d+$/.test(String(rawAuthor)) ? 'uid-direct' : 'unknown';
     let uid = rawAuthor;
     let fallbackCandidateUids = [];
     if (!uid) return { ok: false, message: 'author 参数不能为空' };
@@ -217,10 +219,12 @@ export async function fetchByParsed(client, parsed) {
       const aliasUid = parsed?.aliasStore ? await parsed.aliasStore.resolve(uid) : null;
       if (aliasUid) {
         uid = aliasUid;
+        resolvedFrom = 'alias-cache';
       } else {
         const key = normalizeAuthorKey(uid);
         if (AUTHOR_ID_MAP.has(key)) {
           uid = AUTHOR_ID_MAP.get(key);
+          resolvedFrom = 'builtin-map';
         } else {
           const users = await client.searchUsers(uid);
           const userCandidates = Array.isArray(users) ? users.map(u => String(u.id || '')).filter(Boolean) : [];
@@ -231,6 +235,7 @@ export async function fetchByParsed(client, parsed) {
             try { webUid = await client.searchUserIdByWeb(uid); } catch {}
             if (webUid) {
               uid = webUid;
+              resolvedFrom = 'web-fallback-empty';
               fallbackCandidateUids = [String(webUid), ...fallbackCandidateUids.filter(x => x !== String(webUid))];
               if (parsed?.aliasStore) await parsed.aliasStore.set(rawAuthor, uid, 'webFallback');
             } else {
@@ -240,6 +245,7 @@ export async function fetchByParsed(client, parsed) {
             const isExact = !!users[0]?.exact;
             if (isExact || users.length === 1) {
               uid = users?.[0]?.id || '';
+              resolvedFrom = isExact ? 'pixiv-users-exact' : 'pixiv-users-single';
               if (uid && parsed?.aliasStore) {
                 await parsed.aliasStore.set(rawAuthor, uid, 'searchUsers');
               }
@@ -248,6 +254,7 @@ export async function fetchByParsed(client, parsed) {
               try { webUid = await client.searchUserIdByWeb(uid); } catch {}
               if (webUid) {
                 uid = webUid;
+                resolvedFrom = 'web-fallback-ambiguous';
                 fallbackCandidateUids = [String(webUid), ...fallbackCandidateUids.filter(x => x !== String(webUid))];
                 if (parsed?.aliasStore) await parsed.aliasStore.set(rawAuthor, uid, 'webFallback');
               } else {
@@ -281,6 +288,7 @@ export async function fetchByParsed(client, parsed) {
         const altIds = await client.userIllustIds(altUid).catch(() => []);
         if (altIds.length) {
           uid = altUid;
+          resolvedFrom = 'fallback-has-works';
           ids = altIds;
           if (parsed?.aliasStore && rawAuthor) {
             await parsed.aliasStore.set(rawAuthor, uid, 'fallbackHasWorks');
@@ -334,13 +342,21 @@ export async function fetchByParsed(client, parsed) {
     const fallbackPool = [...candidatePool.slice(pickPoolSize), ...ids.slice(latestPool.length)];
     const modeText = useAllTime ? '全作品随机' : `近${years}年随机`;
 
-    return await resolve(
+    const result = await resolve(
       client,
       selected,
       parsed.nsfw,
       `P站画师:${parsed.author}(${uid}) ${modeText}`,
       { targetCount, fallbackPool },
     );
+    result.debug = {
+      ...(result.debug || {}),
+      authorUid: uid,
+      authorResolvedFrom: resolvedFrom,
+      authorResolveMs: Date.now() - resolveT0,
+      candidateCount: fallbackCandidateUids.length,
+    };
+    return result;
   }
 
   if (parsed.type === 'rank') {

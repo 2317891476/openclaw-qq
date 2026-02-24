@@ -246,6 +246,9 @@ class PixivPlugin {
       const target = (d.target ?? out.imagePaths?.length ?? 0);
       const stage = Array.isArray(d.stageStats) ? d.stageStats.join(' > ') : 'n/a';
       text += `\n[verbose] pool=${d.poolCount ?? 'n/a'} stage=${stage} mode=${d.mode || 'n/a'} result=${got}/${target} t=${cost}ms`;
+      if (d.authorUid) {
+        text += `\n[author] uid=${d.authorUid} from=${d.authorResolvedFrom || 'n/a'} resolve=${d.authorResolveMs ?? 'n/a'}ms candidates=${d.candidateCount ?? 'n/a'}`;
+      }
     }
 
     await this.sendBundle({
