@@ -280,6 +280,8 @@ export async function fetchByParsed(client, parsed) {
       await parsed.aliasStore.set(rawAuthor, uid, 'resolved');
     }
 
+    const authorResolveMs = Date.now() - resolveT0;
+
     const targetCount = parsed.count || 5;
     let ids = await client.userIllustIds(uid);
     if (!ids.length && fallbackCandidateUids.length > 0) {
@@ -353,7 +355,7 @@ export async function fetchByParsed(client, parsed) {
       ...(result.debug || {}),
       authorUid: uid,
       authorResolvedFrom: resolvedFrom,
-      authorResolveMs: Date.now() - resolveT0,
+      authorResolveMs,
       candidateCount: fallbackCandidateUids.length,
     };
     return result;

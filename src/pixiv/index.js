@@ -238,7 +238,7 @@ class PixivPlugin {
     if (!out.ok) return out;
 
     let text = out.header;
-    const verbose = await this.settings.getVerbose(contextKey);
+    const verbose = parsed.oneShotVerbose || await this.settings.getVerbose(contextKey);
     if (verbose && out.debug) {
       const d = out.debug;
       const cost = Date.now() - t0;

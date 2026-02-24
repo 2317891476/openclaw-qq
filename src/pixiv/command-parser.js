@@ -111,6 +111,7 @@ export function parsePixivCommand(cmdText) {
 
   const nsfw = args.includes('--nsfw');
   const noHq = args.includes('--nohq') || args.includes('--no-hq');
+  const oneShotVerbose = args.includes('--verbose');
   const countFirst = args.includes('--count_first') || args.includes('--count-first');
   const qualityFirst = args.includes('--quality_first') || args.includes('--quality-first');
 
@@ -167,7 +168,7 @@ export function parsePixivCommand(cmdText) {
   const alltime = args.includes('--alltime');
 
   const cleaned = args.filter((x, i) => {
-    if (['--nsfw', '--nohq', '--no-hq', '--alltime', '--count_first', '--count-first', '--quality_first', '--quality-first'].includes(x)) return false;
+    if (['--nsfw', '--nohq', '--no-hq', '--alltime', '--verbose', '--count_first', '--count-first', '--quality_first', '--quality-first'].includes(x)) return false;
     if (/^--years=\d+$/i.test(x)) return false;
     if (/^--years$/i.test(x) && /^\d+$/.test(args[i + 1] || '')) return false;
     if (i > 0 && /^\d+$/.test(x) && /^--years$/i.test(args[i - 1] || '')) return false;
@@ -202,10 +203,10 @@ export function parsePixivCommand(cmdText) {
     if ((cleaned[1] || '').toLowerCase() === 'pick') {
       const uid = String(cleaned[2] || '').trim();
       if (!/^\d+$/.test(uid)) {
-        return { type: 'authorPick', nsfw, noHq, uid: '', count: 0, years: null, alltime: false };
+        return { type: 'authorPick', nsfw, noHq, oneShotVerbose, uid: '', count: 0, years: null, alltime: false };
       }
       const yearsClamped = Number.isFinite(years) ? Math.max(1, Math.min(20, years)) : null;
-      return { type: 'authorPick', nsfw, noHq, uid, count: clamp(cleaned[3], 5, 1, 20), years: yearsClamped, alltime };
+      return { type: 'authorPick', nsfw, noHq, oneShotVerbose, uid, count: clamp(cleaned[3], 5, 1, 20), years: yearsClamped, alltime };
     }
 
     const rawAuthorArgs = args.slice(1);
@@ -215,7 +216,7 @@ export function parsePixivCommand(cmdText) {
     for (let i = 0; i < rawAuthorArgs.length; i++) {
       const t = String(rawAuthorArgs[i] || '');
       if (!t) continue;
-      if (t === '--nsfw' || t === '--nohq' || t === '--no-hq' || t === '--alltime') continue;
+      if (t === '--nsfw' || t === '--nohq' || t === '--no-hq' || t === '--alltime' || t === '--verbose') continue;
       if (/^--years=\d+$/i.test(t)) continue;
       if (/^--years$/i.test(t)) {
         if (/^\d+$/.test(rawAuthorArgs[i + 1] || '')) i += 1;
@@ -236,6 +237,7 @@ export function parsePixivCommand(cmdText) {
       nsfw,
       noHq,
       count,
+      oneShotVerbose,
       author: kept.join(' ').trim(),
       years: yearsClamped,
       alltime,
@@ -246,7 +248,7 @@ export function parsePixivCommand(cmdText) {
   if ((cleaned[0] || '').toLowerCase() === 'rank') {
     const count = clamp(cleaned[1], 5, 1, 20);
     const mode = (cleaned[2] || 'daily').toLowerCase();
-    return { type: 'rank', nsfw, noHq, count, mode: ['daily', 'weekly', 'monthly', 'all'].includes(mode) ? mode : 'daily' };
+    return { type: 'rank', nsfw, noHq, oneShotVerbose, count, mode: ['daily', 'weekly', 'monthly', 'all'].includes(mode) ? mode : 'daily' };
   }
 
   // /pixiv [count|range] [keyword...]
@@ -267,6 +269,7 @@ export function parsePixivCommand(cmdText) {
     type: 'search',
     nsfw,
     noHq,
+    oneShotVerbose,
     count,
     range,
     keyword,
