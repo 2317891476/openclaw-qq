@@ -11,6 +11,10 @@ const AUTHOR_DEFAULT_YEARS = 3;
 // This is not cache; it's a deterministic mapping to avoid API user-search misses.
 const AUTHOR_ID_MAP = new Map([
   ['ask', '1980643'],
+  ['米山舞', '1554775'],
+  ['yoneyamai', '1554775'],
+  ['mai yoneyama', '1554775'],
+  ['yoneyama', '1554775'],
 ]);
 
 
