@@ -157,7 +157,9 @@ export class PixivClient {
     if (!r.ok) return [];
     const j = await r.json();
     const illusts = Object.keys(j?.body?.illusts || {});
-    return [...new Set(illusts.map(String))];
+    const manga = Object.keys(j?.body?.manga || {});
+    const mixed = [...illusts, ...manga];
+    return [...new Set(mixed.map(String))];
   }
 
   async rankIds(mode) {
