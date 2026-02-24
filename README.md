@@ -191,20 +191,22 @@ curl -s http://127.0.0.1:3210/pixiv_rank \
 
 ### 新设备步骤
 1. 安装 OpenClaw / NapCat
-2. 克隆仓库
-   ```bash
-   git clone https://github.com/2317891476/openclaw-qq.git
-   cd openclaw-qq
-   ```
-3. 安装插件（推荐 npm 版）
+2. 二选一安装方式：
+
+   **A. npm 安装（推荐，生产使用）**
    ```bash
    openclaw plugins install @cs2317/openclaw-qq
    ```
-   本地源码调试版（可选）：
+   > 这种方式不需要 `git clone`。
+
+   **B. 本地源码安装（调试/二开）**
    ```bash
+   git clone https://github.com/2317891476/openclaw-qq.git
+   cd openclaw-qq
    openclaw plugins install .
    ```
-4. 配置 `~/.openclaw/openclaw.json`
+
+3. 配置 `~/.openclaw/openclaw.json`
    - `napcatWs` / `napcatToken`
    - `botQQ`
    - `allowedUsers` / `allowedGroups`
