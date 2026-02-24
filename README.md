@@ -69,7 +69,28 @@ openclaw plugins install /absolute/path/to/openclaw-qq
 ~/openclaw-gateway-scripts/restart.sh
 ```
 
-## 4) 使用
+## 4) 最新增强（近期已实现）
+
+- 会话与路由
+  - 群聊与私聊会话隔离（避免上下文串线）
+  - 群聊仅在 `@bot` 或斜杠命令触发时响应（按配置可控）
+- 稳定性与防重复
+  - NapCat WS 心跳探活 + 超时自动重连
+  - 入站消息去重（按 `message_id`）
+  - Session Forwarder 去重（避免同步回复 + 异步转发双发）
+- 发送可靠性
+  - 分上下文发送队列（per-context queue）+ 全局并发控制
+  - 自适应发送节奏（根据 timeout/error 动态调速）
+  - 图片发送分批策略（降低 NapCat 超时概率）
+- 可观测与运维
+  - `/diag` 运行时诊断（连接状态、重连次数、发送统计）
+  - `/config get|set`（管理员）可在线调整 `sendQueue.*` / `pixiv.*`
+- 状态持久化（SQLite，第一阶段）
+  - 持久化去重状态（inbound/forward/recent reply）
+  - 持久化会话映射（context -> session）
+  - 数据库路径：`<workspace>/.openclaw-qq/state.db`
+
+## 5) 使用
 
 ### 基础
 - `/help` 或 `hyw`：输出帮助文档（读取 `QQ_BOT_HELP.md`）
@@ -97,7 +118,7 @@ openclaw plugins install /absolute/path/to/openclaw-qq
 - `/pixiv rank 5 monthly`
 - `/pixiv rank 5 all`
 
-## 5) HTTP 接口
+## 6) HTTP 接口
 
 当 `port > 0` 时可用：
 
@@ -122,7 +143,7 @@ curl -s http://127.0.0.1:3210/pixiv_rank \
   -d '{"groupId":"587526665","mode":"monthly","count":5,"safeOnly":true}'
 ```
 
-## 6) 其他设备迁移安装指南
+## 7) 其他设备迁移安装指南
 
 ### 迁移最小集
 把以下内容拷到新设备：
