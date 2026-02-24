@@ -9,13 +9,23 @@ const AUTHOR_DEFAULT_YEARS = 3;
 
 // Author exact-id overrides for high-confidence aliases.
 // This is not cache; it's a deterministic mapping to avoid API user-search misses.
+function normalizeAuthorKey(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[\s·・_\-]+/g, '')
+    .trim();
+}
+
+// Deterministic UID mapping for known aliases/names.
+// This is the most reliable path when Pixiv user search returns noisy candidates.
 const AUTHOR_ID_MAP = new Map([
   ['ask', '1980643'],
   ['米山舞', '1554775'],
   ['yoneyamai', '1554775'],
   ['mai yoneyama', '1554775'],
   ['yoneyama', '1554775'],
-]);
+].map(([k, v]) => [normalizeAuthorKey(k), v]));
 
 
 function tlog(parsed, stage, extra = {}) {
@@ -143,7 +153,7 @@ export async function fetchByParsed(client, parsed) {
     if (aliasUid) uid = aliasUid;
     if (!uid) return { ok: false, message: '用法：/pixiv author profile <uid|name>' };
     if (!/^\d+$/.test(uid)) {
-      const key = uid.toLowerCase();
+      const key = normalizeAuthorKey(uid);
       if (AUTHOR_ID_MAP.has(key)) uid = AUTHOR_ID_MAP.get(key);
       else {
         const users = await client.searchUsers(uid);
@@ -207,7 +217,7 @@ export async function fetchByParsed(client, parsed) {
       if (aliasUid) {
         uid = aliasUid;
       } else {
-        const key = String(uid).trim().toLowerCase();
+        const key = normalizeAuthorKey(uid);
         if (AUTHOR_ID_MAP.has(key)) {
           uid = AUTHOR_ID_MAP.get(key);
         } else {
