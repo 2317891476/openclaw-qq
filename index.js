@@ -41,8 +41,37 @@ const plugin = {
 
     const sessionFileOffsets = new Map(); // sessionFile -> lastReadByte
     const forwardedSignatures = new Set(); // avoid duplicates across restarts/events
-    const recentlySentTexts = new Map(); // sessionKey -> {text, atMs}
-    const MAX_RECENT_MS = 15000;
+    const recentlySentTexts = new Map(); // sessionKey -> [{norm, atMs}]
+    const MAX_RECENT_MS = 60000;
+
+    function normalizeReplyText(text) {
+      return String(text || '')
+        .replace(/^\s*\[\[\s*reply_to(?::[^\]]+|_current)?\s*\]\]\s*/i, '')
+        .replace(/\r\n/g, '\n')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+
+    function markRecentlySent(sessionKey, text) {
+      const now = Date.now();
+      const norm = normalizeReplyText(text);
+      if (!norm) return;
+      const prev = recentlySentTexts.get(sessionKey) || [];
+      const kept = prev.filter((x) => (now - x.atMs) < MAX_RECENT_MS);
+      kept.push({ norm, atMs: now });
+      recentlySentTexts.set(sessionKey, kept.slice(-8));
+    }
+
+    function wasRecentlySent(sessionKey, text) {
+      const now = Date.now();
+      const norm = normalizeReplyText(text);
+      if (!norm) return false;
+      const prev = recentlySentTexts.get(sessionKey) || [];
+      const kept = prev.filter((x) => (now - x.atMs) < MAX_RECENT_MS);
+      recentlySentTexts.set(sessionKey, kept);
+      return kept.some((x) => x.norm === norm);
+    }
 
     function qqTargetFromSessionKey(sessionKey) {
       // sessionKey examples:
@@ -125,9 +154,7 @@ const plugin = {
             if (forwardedSignatures.has(uniqueKey)) continue;
 
             // Suppress echo of messages we already sent synchronously
-            const recent = recentlySentTexts.get(sessionKey);
-            const now = Date.now();
-            if (recent && (now - recent.atMs) < MAX_RECENT_MS && recent.text === extracted.text) {
+            if (wasRecentlySent(sessionKey, extracted.text)) {
               forwardedSignatures.add(uniqueKey);
               continue;
             }
@@ -990,7 +1017,7 @@ const plugin = {
           if (reply) {
             // Mark as recently-sent to suppress duplicate forwarding via the session watcher
             const sessionKey = `agent:main:openresponses-user:${sessionId.toLowerCase()}`;
-            recentlySentTexts.set(sessionKey, { text: reply, atMs: Date.now() });
+            markRecentlySent(sessionKey, reply);
             const ctx = contextKey(isGroup, groupId, userId);
             if (isGroup) await sendToQQTracked(groupId, reply, true, { contextKey: ctx }).catch(() => sendToQQ(groupId, reply, true));
             else await sendToQQTracked(userId, reply, false, { contextKey: ctx }).catch(() => sendToQQ(userId, reply));
