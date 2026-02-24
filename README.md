@@ -102,21 +102,58 @@ openclaw plugins install /absolute/path/to/openclaw-qq
 - `/p 5 Fate`（简写）
 - `p 5 Fate`（简写）
 
-可选参数：
+搜索可选参数：
 - `--nohq`：不使用 10000/5000/1000users入り 分层质量标签
 - `--nsfw`：显式允许 NSFW（仅在你实际策略允许时生效）
+- `--min_bookmark 1000` 或 `--min_bookmark=1000`
+- `--ratio 9:16` 或 `--ratio=9:16`
+- `--mode users|bookmark|hybrid`
+- `--count-first` / `--quality-first`
 
 ### 画师检索
 - `/pixiv author ASK`
 - `/pixiv author ASK 8`
-- `/pixiv author ASK --years 3`（近 N 年随机，默认 3 年）
+- `/pixiv author ASK --years 3`（近 N 年随机）
 - `/pixiv author ASK --alltime`（全作品随机）
+- `/pixiv author profile ASK`（画师信息）
+- `/pixiv author pick 123456`（指定 uid 抽取）
 
 ### 排行
 - `/pixiv rank 5 daily`
 - `/pixiv rank 5 weekly`
 - `/pixiv rank 5 monthly`
 - `/pixiv rank 5 all`
+
+### 最近记录与复跑
+- `/pixiv last`（查看上次执行快照）
+- `/pixiv rerun` 或 `/pixiv rerun 8`（按上次条件重跑）
+
+### 收藏夹（fav）
+- `/pixiv fav add`（把 last 中作品加入收藏）
+- `/pixiv fav list`（收藏列表）
+- `/pixiv fav list --tag 白发`
+- `/pixiv fav send 5`（从收藏随机发图）
+- `/pixiv fav send 5 --tag 白发`
+- `/pixiv fav remove 12345678`
+- `/pixiv fav tag 12345678 白发 高质量`
+
+### 主题（topic）
+- `/pixiv topic save 白发精选 5 白发 --min_bookmark 1000`
+- `/pixiv topic add 白发精选 3 银发 --ratio 9:16`
+- `/pixiv topic 白发精选 6`（运行主题）
+- `/pixiv topic list` / `/pixiv topic list 白发精选`
+- `/pixiv topic delete 白发精选`
+
+### 预设（preset）
+- `/pixiv preset save r18hot 5 巨乳 --nsfw`
+- `/pixiv preset run r18hot 8`
+- `/pixiv preset list`
+- `/pixiv preset delete r18hot`
+
+### 导出与调试
+- `/pixiv export links`（导出链接）
+- `/pixiv export json`（导出 JSON）
+- `/pixiv verbose on|off`（详细日志开关）
 
 ## 6) HTTP 接口
 
