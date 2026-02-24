@@ -1,4 +1,13 @@
+import { ProxyAgent, setGlobalDispatcher } from 'undici';
+
 const UA = 'Mozilla/5.0';
+
+const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.ALL_PROXY || '';
+if (proxyUrl) {
+  try {
+    setGlobalDispatcher(new ProxyAgent(proxyUrl));
+  } catch {}
+}
 
 function normText(s) {
   return String(s || '')
