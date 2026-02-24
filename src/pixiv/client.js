@@ -69,7 +69,7 @@ export class PixivClient {
         .filter(u => u.id);
 
       if (out.length) {
-        // Re-rank by lexical relevance, suppress irrelevant candidates.
+        // Re-rank by lexical relevance first.
         const scored = out
           .map((u, i) => ({ ...u, _score: scoreUserCandidate(q, u), _idx: i }))
           .filter(u => u._score > 0)
@@ -80,6 +80,10 @@ export class PixivClient {
           if (top._score >= 100) top.exact = true;
           return scored.map(({ _score, _idx, ...u }) => u);
         }
+
+        // If strict lexical match fails (e.g. cross-language query like 中文名),
+        // fall back to Pixiv API ranking instead of returning empty.
+        return out;
       }
     }
 
