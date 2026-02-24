@@ -180,13 +180,14 @@ curl -s http://127.0.0.1:3210/pixiv_rank \
   -d '{"groupId":"587526665","mode":"monthly","count":5,"safeOnly":true}'
 ```
 
-## 7) 其他设备迁移安装指南
+## 7) 其他设备迁移安装指南（含 Pixiv 状态与 SQLite）
 
 ### 迁移最小集
 把以下内容拷到新设备：
 - 本仓库代码（`openclaw-qq`）
 - 目标设备可用的 NapCat（OneBot v11）
 - 新设备的 `~/.openclaw/openclaw.json` 插件配置
+- （可选）旧设备 workspace 中的运行态数据（见下方“状态数据迁移”）
 
 ### 新设备步骤
 1. 安装 OpenClaw / NapCat
@@ -195,21 +196,45 @@ curl -s http://127.0.0.1:3210/pixiv_rank \
    git clone https://github.com/2317891476/openclaw-qq.git
    cd openclaw-qq
    ```
-3. 安装插件
+3. 安装插件（推荐 npm 版）
+   ```bash
+   openclaw plugins install @cs2317/openclaw-qq
+   ```
+   本地源码调试版（可选）：
    ```bash
    openclaw plugins install .
    ```
-4. 配置 `openclaw.json`（`napcatWs`、`botQQ`、白名单、port）
+4. 配置 `~/.openclaw/openclaw.json`
+   - `napcatWs` / `napcatToken`
+   - `botQQ`
+   - `allowedUsers` / `allowedGroups`
+   - `adminUsers`
+   - `port`
 5. 重启 gateway
    ```bash
    ~/openclaw-gateway-scripts/restart.sh
    ```
-6. QQ 中发送 `/help` 验证
+6. QQ 验证
+   - `/help`
+   - `/diag`（确认 napcat 连接、storage=sqlite）
+   - `/pixiv 3 白发`
 
-### 建议同步的本地文件
-- `QQ_BOT_HELP.md`（你自定义帮助）
-- 白名单配置（`allowedUsers` / `allowedGroups`）
-- 若有代理/隧道，记得同步 `gateway.trustedProxies`
+### 状态数据迁移（建议）
+如需保留历史与偏好，可从旧设备同步以下文件到**新设备 workspace 根目录**：
+- `QQ_BOT_HELP.md`
+- `pixiv-favs.json`
+- `pixiv-topics.json`
+- `pixiv-presets.json`
+- `pixiv-last.json`
+- `pixiv-settings.json`
+- `.openclaw-qq/state.db`（SQLite 去重/会话状态库）
+
+> 若不迁移这些文件，插件也能正常运行，但会丢失收藏、主题、预设、最近记录和部分去重状态。
+
+### 建议同步的网络/安全配置
+- `gateway.trustedProxies`（有反向代理时）
+- `plugins.allow`（建议显式白名单插件）
+- `allowedUsers` / `allowedGroups` / `adminUsers`（权限边界）
 
 ## License
 

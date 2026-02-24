@@ -1,6 +1,6 @@
 {
   "name": "@cs2317/openclaw-qq",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "QQ channel plugin for OpenClaw via NapCat (OneBot v11)",
   "main": "index.js",
   "type": "module",
