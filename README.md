@@ -69,6 +69,47 @@ openclaw plugins install /absolute/path/to/openclaw-qq
 ~/openclaw-gateway-scripts/restart.sh
 ```
 
+## 会话连续性（避免 daily reset 影响工作上下文）
+
+如果你希望 QQ 触发的会话长期保留在在线工作集中（不因 daily reset 在次日切线），建议在 `~/.openclaw/openclaw.json` 增加/调整：
+
+```json
+{
+  "tools": {
+    "sessions": {
+      "visibility": "all"
+    }
+  },
+  "session": {
+    "reset": {
+      "mode": "idle",
+      "idleMinutes": 52560000
+    },
+    "resetByType": {
+      "direct": {
+        "mode": "idle",
+        "idleMinutes": 52560000
+      },
+      "group": {
+        "mode": "idle",
+        "idleMinutes": 52560000
+      },
+      "thread": {
+        "mode": "idle",
+        "idleMinutes": 52560000
+      }
+    }
+  }
+}
+```
+
+说明：
+- `tools.sessions.visibility = "all"`：让跨来源会话都可见于会话工具视图（在线工作集）。
+- `session.reset.mode = "idle"`：关闭 daily 切线，改为按空闲时长判断。
+- `idleMinutes = 52560000` 约等于 100 年，可视作“长期保留”。
+
+改完后重启 Gateway 即可生效。
+
 ## 4) 最新增强（近期已实现）
 
 - 会话与路由
