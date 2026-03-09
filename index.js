@@ -809,7 +809,9 @@ const plugin = {
         log.info(`[<- ${isGroup ? `group:${groupId} user:${userId}` : `user:${userId}`}] ${text.slice(0, 100)}`);
 
         // IMPORTANT: keep group + private sessions separate to avoid cross-posting.
-        const sessionId = isGroup ? `qqg_${groupId}_${userId}` : `qq_${userId}`;
+        const sessionId = isGroup
+          ? `qqg_${groupId}_${userId}`
+          : `qq_${userId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         storage?.rememberSession(contextKey(isGroup, groupId, userId), sessionId, userId, groupId, isGroup);
 
         try {
