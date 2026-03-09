@@ -2,15 +2,18 @@ import { createRequire } from 'node:module';
 
 const UA = 'Mozilla/5.0';
 
-// Optional proxy bridge for Node fetch(undici). Must never hard-fail plugin loading.
-try {
-  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.ALL_PROXY || '';
-  if (proxyUrl) {
+function applyProxy(proxyUrl) {
+  try {
+    const url = String(proxyUrl || '').trim();
+    if (!url) return;
     const require = createRequire(import.meta.url);
     const { ProxyAgent, setGlobalDispatcher } = require('undici');
-    if (ProxyAgent && setGlobalDispatcher) setGlobalDispatcher(new ProxyAgent(proxyUrl));
-  }
-} catch {}
+    if (ProxyAgent && setGlobalDispatcher) setGlobalDispatcher(new ProxyAgent(url));
+  } catch {}
+}
+
+// Optional proxy bridge for Node fetch(undici). Must never hard-fail plugin loading.
+applyProxy(process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.ALL_PROXY || '');
 
 
 function normText(s) {
@@ -35,11 +38,13 @@ function scoreUserCandidate(q, user) {
   return 0;
 }
 
-function headers(referer) {
+function headers(referer, cookie) {
+  const c = String(cookie || '').trim();
   return {
     'User-Agent': UA,
     'Accept': 'application/json',
     ...(referer ? { Referer: referer } : {}),
+    ...(c ? { Cookie: c } : {}),
   };
 }
 
@@ -53,6 +58,13 @@ function extractPixivUserIds(text) {
 }
 
 export class PixivClient {
+  constructor(cfg = {}) {
+    this.cfg = cfg || {};
+    this.cookie = String(this.cfg.cookie || '').trim();
+    this.proxyUrl = String(this.cfg.proxyUrl || '').trim();
+    if (this.proxyUrl) applyProxy(this.proxyUrl);
+  }
+
   async searchUserIdByWeb(query) {
     const q = String(query || '').trim();
     if (!q) return null;
@@ -62,7 +74,7 @@ export class PixivClient {
     // 1) DuckDuckGo HTML fallback (no API key)
     try {
       const u = `https://duckduckgo.com/html/?q=${encodeURIComponent(`site:pixiv.net/users ${q}`)}`;
-      const r = await fetch(u, { headers: { 'User-Agent': UA, 'Accept': 'text/html' }, signal: AbortSignal.timeout(3500) });
+      const r = await fetch(u, { headers: { 'User-Agent': UA, 'Accept': 'text/html', ...(this.cookie ? { Cookie: this.cookie } : {}) }, signal: AbortSignal.timeout(3500) });
       if (r.ok) {
         const html = await r.text();
         candidates.push(...extractPixivUserIds(html));
@@ -72,7 +84,7 @@ export class PixivClient {
     // 2) Pixiv tag page may contain linked user profile URLs
     try {
       const tu = `https://www.pixiv.net/tags/${encodeURIComponent(q)}`;
-      const r2 = await fetch(tu, { headers: { 'User-Agent': UA, Referer: 'https://www.pixiv.net/' }, signal: AbortSignal.timeout(3500) });
+      const r2 = await fetch(tu, { headers: headers('https://www.pixiv.net/', this.cookie), signal: AbortSignal.timeout(3500) });
       if (r2.ok) {
         const html2 = await r2.text();
         candidates.push(...extractPixivUserIds(html2));
@@ -87,7 +99,7 @@ export class PixivClient {
     const ids = [];
     for (let p = 1; p <= pages; p++) {
       const url = `https://www.pixiv.net/ajax/search/artworks/${encodeURIComponent(keyword)}?word=${encodeURIComponent(keyword)}&order=date_d&mode=${mode}&p=${p}&s_mode=s_tag&type=all`;
-      const r = await fetch(url, { headers: headers(`https://www.pixiv.net/tags/${encodeURIComponent(keyword)}/artworks?s_mode=s_tag`) });
+      const r = await fetch(url, { headers: headers(`https://www.pixiv.net/tags/${encodeURIComponent(keyword)}/artworks?s_mode=s_tag`, this.cookie) });
       if (!r.ok) continue;
       const j = await r.json();
       const list = j?.body?.illustManga?.data || j?.body?.illustManga?.illust?.data || [];
@@ -107,7 +119,7 @@ export class PixivClient {
 
     // Primary: user search endpoint (author lookup should prefer this path)
     const url = `https://www.pixiv.net/ajax/search/users/${encodeURIComponent(q)}?word=${encodeURIComponent(q)}`;
-    const r = await fetch(url, { headers: headers(`https://www.pixiv.net/search/users/${encodeURIComponent(q)}`) });
+    const r = await fetch(url, { headers: headers(`https://www.pixiv.net/search/users/${encodeURIComponent(q)}`, this.cookie) });
     if (r.ok) {
       const j = await r.json();
       const users = j?.body?.users || [];
@@ -141,7 +153,7 @@ export class PixivClient {
     // Fallback: artwork search and infer author from result cards
     // (used only when user search returns empty)
     const aurl = `https://www.pixiv.net/ajax/search/artworks/${encodeURIComponent(q)}?word=${encodeURIComponent(q)}&order=date_d&mode=all&p=1&s_mode=s_tag&type=all`;
-    const ar = await fetch(aurl, { headers: headers(`https://www.pixiv.net/tags/${encodeURIComponent(q)}/artworks?s_mode=s_tag`) });
+    const ar = await fetch(aurl, { headers: headers(`https://www.pixiv.net/tags/${encodeURIComponent(q)}/artworks?s_mode=s_tag`, this.cookie) });
     if (!ar.ok) return [];
     const aj = await ar.json();
     const list = aj?.body?.illustManga?.data || [];
@@ -166,7 +178,7 @@ export class PixivClient {
 
   async userIllustIds(userId) {
     const url = `https://www.pixiv.net/ajax/user/${encodeURIComponent(userId)}/profile/all`;
-    const r = await fetch(url, { headers: headers(`https://www.pixiv.net/users/${encodeURIComponent(userId)}`) });
+    const r = await fetch(url, { headers: headers(`https://www.pixiv.net/users/${encodeURIComponent(userId)}`, this.cookie) });
     if (!r.ok) return [];
     const j = await r.json();
     const illusts = Object.keys(j?.body?.illusts || {});
@@ -177,7 +189,7 @@ export class PixivClient {
 
   async rankIds(mode) {
     const url = `https://www.pixiv.net/ranking.php?mode=${encodeURIComponent(mode)}&content=illust&format=json`;
-    const r = await fetch(url, { headers: headers(`https://www.pixiv.net/ranking.php?mode=${encodeURIComponent(mode)}`) });
+    const r = await fetch(url, { headers: headers(`https://www.pixiv.net/ranking.php?mode=${encodeURIComponent(mode)}`, this.cookie) });
     if (!r.ok) return [];
     const j = await r.json();
     const contents = Array.isArray(j?.contents) ? j.contents : [];
@@ -191,7 +203,7 @@ export class PixivClient {
 
   async illustMeta(id) {
     const detailUrl = `https://www.pixiv.net/ajax/illust/${encodeURIComponent(id)}`;
-    const dr = await fetch(detailUrl, { headers: headers(`https://www.pixiv.net/artworks/${id}`) });
+    const dr = await fetch(detailUrl, { headers: headers(`https://www.pixiv.net/artworks/${id}`, this.cookie) });
     if (!dr.ok) return null;
     const dj = await dr.json();
     const body = dj?.body || {};
@@ -202,7 +214,7 @@ export class PixivClient {
     const height = Number(body?.height || 0);
 
     const pagesUrl = `https://www.pixiv.net/ajax/illust/${encodeURIComponent(id)}/pages`;
-    const pr = await fetch(pagesUrl, { headers: headers(`https://www.pixiv.net/artworks/${id}`) });
+    const pr = await fetch(pagesUrl, { headers: headers(`https://www.pixiv.net/artworks/${id}`, this.cookie) });
     if (!pr.ok) return null;
     const pj = await pr.json();
     const original = pj?.body?.[0]?.urls?.original || null;
@@ -213,7 +225,7 @@ export class PixivClient {
     if (!meta?.original) return null;
     const ext = (meta.original.split('?')[0].split('.').pop() || 'jpg').toLowerCase();
     const out = `/tmp/openclaw-qq-pixiv/${meta.id}_p0.${ext}`;
-    const r = await fetch(meta.original, { headers: { 'User-Agent': UA, Referer: `https://www.pixiv.net/artworks/${meta.id}` } });
+    const r = await fetch(meta.original, { headers: { 'User-Agent': UA, Referer: `https://www.pixiv.net/artworks/${meta.id}`, ...(this.cookie ? { Cookie: this.cookie } : {}) } });
     if (!r.ok) return null;
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.byteLength > 8 * 1024 * 1024) return null;

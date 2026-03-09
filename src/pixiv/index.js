@@ -17,7 +17,7 @@ class PixivPlugin {
     this.log = logger;
     this.sendBundle = sendBundle;
     this.cfg = pixivConfig;
-    this.client = new PixivClient();
+    this.client = new PixivClient(this.cfg);
     this.rate = new Map();
     this.presets = new PresetStore(workspaceDir);
     this.settings = new PixivSettingsStore(workspaceDir);
